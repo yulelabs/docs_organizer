@@ -41,6 +41,8 @@ const MONTHS: Record<string, string> = {
   december: "12",
 };
 
+const AMOUNT = String.raw`([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})|[0-9]+(?:[.,][0-9]{2}))`;
+
 function normalizeText(text: string): string {
   return text.replace(/\r/g, "").replace(/[ \t]+/g, " ").trim();
 }
@@ -113,7 +115,7 @@ function extractDate(text: string): string | null {
 
 function extractVendor(lines: string[]): string | null {
   const skip =
-    /^(fatura|factura|invoice|recibo|receipt|nif|vat|iva|total|data|date|morada|address|tel|telefone|email|www\.|http)/i;
+    /^(fatura|factura|invoice|recibo|receipt|nota\s+de\s+cr[eé]dito|nif|vat|iva|total|data|date|morada|address|tel|telefone|email|www\.|http)/i;
 
   for (const line of lines.slice(0, 12)) {
     const cleaned = line.replace(/[^\p{L}\p{N}&.,\-/' ]/gu, "").trim();
@@ -129,6 +131,16 @@ function firstMatch(text: string, patterns: RegExp[]): string | null {
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (match?.[1]) return match[1].trim();
+  }
+  return null;
+}
+
+function firstAmount(text: string, patterns: RegExp[]): number | null {
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match?.[1]) continue;
+    const amount = parseAmount(match[1]);
+    if (amount != null) return amount;
   }
   return null;
 }
@@ -156,6 +168,66 @@ function detectCurrency(text: string): string {
   return "EUR";
 }
 
+/**
+ * Document totals — prefer explicit Portuguese/English labels.
+ * Amount may appear after the label (`Total a Creditar 30,00€`)
+ * or before it (`30,00€ Total`).
+ */
+function extractTotal(text: string): number | null {
+  const label =
+    String.raw`total\s*(?:a\s*(?:pagar|creditar|créditar)|geral|liquido|líquido|com\s*iva)?|` +
+    String.raw`amount\s*due|grand\s*total|valor\s*total`;
+
+  const patterns = [
+    // Total a Creditar 30,00€ / Total a pagar: EUR 43,05
+    new RegExp(
+      String.raw`\b(?:${label})\b\s*[:.]?\s*(?:EUR|€|USD|\$|£)?\s*${AMOUNT}\s*(?:€|EUR)?`,
+      "i",
+    ),
+    // 30,00€ Total a Creditar
+    new RegExp(
+      String.raw`${AMOUNT}\s*(?:€|EUR)?\s*[:.]?\s*\b(?:${label})\b`,
+      "i",
+    ),
+  ];
+
+  return firstAmount(text, patterns);
+}
+
+function extractTax(text: string): number | null {
+  const patterns = [
+    // IVA Normal 23% 24,39€ 5,61€  → capture the tax amount after incidence
+    new RegExp(
+      String.raw`\b(?:iva|vat)\s*(?:normal|reduzido|interm[eé]dio)?\s*(?:\d+[.,]?\d*\s*%)?\s*${AMOUNT}\s*(?:€|EUR)?\s*${AMOUNT}\s*(?:€|EUR)?`,
+      "i",
+    ),
+    // IVA Normal 5,61€ / IVA (23%): 8,05
+    new RegExp(
+      String.raw`\b(?:iva|vat|tax)\s*(?:normal|reduzido|interm[eé]dio)?\s*(?:\([^)]*\)|\d+[.,]?\d*\s*%)?\s*[:.]?\s*(?:EUR|€)?\s*${AMOUNT}\s*(?:€|EUR)?`,
+      "i",
+    ),
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    // Prefer the last capture group when incidence + tax are both present
+    const raw = match[2] ?? match[1];
+    const amount = raw ? parseAmount(raw) : null;
+    if (amount != null) return amount;
+  }
+  return null;
+}
+
+function extractSubtotal(text: string): number | null {
+  return firstAmount(text, [
+    new RegExp(
+      String.raw`\b(?:subtotal|sub-total|total\s*il[ií]q\.?|valor\s*il[ií]quido|net(?:\s*amount)?|base)\b\s*[:.]?\s*(?:EUR|€)?\s*${AMOUNT}\s*(?:€|EUR)?`,
+      "i",
+    ),
+  ]);
+}
+
 export function parseInvoiceText(rawText: string): InvoiceFields {
   const text = normalizeText(rawText);
   const lines = rawText
@@ -170,8 +242,9 @@ export function parseInvoiceText(rawText: string): InvoiceFields {
   fields.category = guessCategory(text, fields.vendor);
 
   fields.invoiceNumber = firstMatch(text, [
+    /(?:nota\s+de\s+cr[eé]dito|fatura|factura|invoice|recibo|receipt)\s*(?:n[ºo°.]?|no\.?|number|#)?\s*[:.]?\s*((?:NC|FT|FR|FS)[\s\/\-]?[A-Z0-9][A-Z0-9\-\/]*)/i,
+    /\b((?:NC|FT|FR|FS)[\s\/\-][A-Z0-9][A-Z0-9\-\/]*)\b/i,
     /(?:fatura|factura|invoice|recibo|receipt)\s*(?:n[ºo°.]?|no\.?|number|#)?\s*[:.]?\s*([A-Z0-9][A-Z0-9\-\/]{2,})/i,
-    /\b(?:FT|FR|FS|NC)[\s\-]?([A-Z0-9][A-Z0-9\-\/]{2,})/i,
   ]);
 
   fields.nif = firstMatch(text, [
@@ -185,21 +258,14 @@ export function parseInvoiceText(rawText: string): InvoiceFields {
     return dueSection ? extractDate(dueSection[0]) : null;
   })();
 
-  const totalMatch = firstMatch(text, [
-    /(?:\btotal\s*(?:a\s*pagar|geral|liquido|líquido)?\b|\bamount\s*due\b|\bgrand\s*total\b)\s*[:.]?\s*(?:EUR|€|USD|\$|£)?\s*([0-9.,]+)/i,
-    /(?:€|EUR)\s*([0-9.,]+)(?=[^\n]*\btotal\b|\s*$)/i,
-  ]);
-  fields.total = totalMatch ? parseAmount(totalMatch) : null;
+  fields.total = extractTotal(text);
+  fields.tax = extractTax(text);
+  fields.subtotal = extractSubtotal(text);
 
-  const taxMatch = firstMatch(text, [
-    /(?:iva|vat|tax|imposto)\s*(?:\([^)]*\))?\s*[:.]?\s*(?:EUR|€)?\s*([0-9.,]+)/i,
-  ]);
-  fields.tax = taxMatch ? parseAmount(taxMatch) : null;
-
-  const subtotalMatch = firstMatch(text, [
-    /(?:subtotal|sub-total|base|valor\s*il[ií]quido|net)\s*[:.]?\s*(?:EUR|€)?\s*([0-9.,]+)/i,
-  ]);
-  fields.subtotal = subtotalMatch ? parseAmount(subtotalMatch) : null;
+  // If total missing but we have subtotal + tax, derive it
+  if (fields.total == null && fields.subtotal != null && fields.tax != null) {
+    fields.total = Number((fields.subtotal + fields.tax).toFixed(2));
+  }
 
   return fields;
 }
