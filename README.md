@@ -124,3 +124,10 @@ See [docs/DEPLOY.md](docs/DEPLOY.md).
 
 Required GitHub secrets for CI: `DATABASE_URL`, `RAILWAY_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
 
+### Live (Railway)
+
+Until Cloudflare Pages token permissions are fixed, the UI is also served from the API:
+
+- App: https://docs-organizer-api-production.up.railway.app
+- Health: https://docs-organizer-api-production.up.railway.app/api/health
+

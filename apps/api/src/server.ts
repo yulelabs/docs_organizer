@@ -1,4 +1,6 @@
-import fs from "node:fs/promises";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
 import { ZodError } from "zod";
@@ -7,9 +9,25 @@ import { apiRouter } from "./routes/api.js";
 import { assertOcrToolsAvailable } from "./services/ocr.js";
 import { startOcrWorker } from "./services/jobs.js";
 
+const here = path.dirname(fileURLToPath(import.meta.url));
+const webDistCandidates = [
+  path.resolve(here, "../../web/dist"),
+  path.resolve(here, "../../../apps/web/dist"),
+  path.resolve("/app/apps/web/dist"),
+];
+
+function resolveWebDist(): string | null {
+  for (const candidate of webDistCandidates) {
+    if (fs.existsSync(path.join(candidate, "index.html"))) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 async function main() {
-  await fs.mkdir(config.localStorageDir, { recursive: true });
-  await fs.mkdir(config.ocrTmpDir, { recursive: true });
+  await fs.promises.mkdir(config.localStorageDir, { recursive: true });
+  await fs.promises.mkdir(config.ocrTmpDir, { recursive: true });
 
   const app = express();
   app.use(
@@ -19,7 +37,9 @@ async function main() {
   );
   app.use(express.json({ limit: "2mb" }));
 
-  app.get("/", (_req, res) => {
+  app.use("/api", apiRouter);
+
+  app.get("/api", (_req, res) => {
     res.json({
       name: "docs-organizer-api",
       version: "0.1.0",
@@ -27,7 +47,26 @@ async function main() {
     });
   });
 
-  app.use("/api", apiRouter);
+  const webDist = resolveWebDist();
+  if (webDist) {
+    console.log("Serving web UI from", webDist);
+    app.use(express.static(webDist));
+    app.get(/.*/, (req, res, next) => {
+      if (req.path.startsWith("/api")) {
+        next();
+        return;
+      }
+      res.sendFile(path.join(webDist, "index.html"));
+    });
+  } else {
+    app.get("/", (_req, res) => {
+      res.json({
+        name: "docs-organizer-api",
+        version: "0.1.0",
+        docs: "/api/health",
+      });
+    });
+  }
 
   app.use(
     (

@@ -18,12 +18,14 @@ function required(name: string, fallback?: string): string {
   return value;
 }
 
+const isProd = (process.env.NODE_ENV ?? "development") === "production";
+
 export const config = {
   port: Number(process.env.PORT ?? 3000),
   nodeEnv: process.env.NODE_ENV ?? "development",
   databaseUrl: required(
     "DATABASE_URL",
-    "postgresql://docs:docs@localhost:5432/docs_organizer",
+    isProd ? undefined : "postgresql://docs:docs@localhost:5432/docs_organizer",
   ),
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
   storageDriver: (process.env.STORAGE_DRIVER ?? "local") as "local" | "r2",
@@ -41,5 +43,5 @@ export const config = {
   ocrTmpDir: path.resolve(
     process.env.OCR_TMP_DIR ?? path.join(rootDir, "data/ocr-tmp"),
   ),
-  isDev: (process.env.NODE_ENV ?? "development") !== "production",
+  isDev: !isProd,
 };

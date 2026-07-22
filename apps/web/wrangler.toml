@@ -1,3 +1,4 @@
+account_id = "d22899d41e2f8a0c8178ace8ba91917a"
 # Cloudflare Pages project metadata (used by wrangler / CI)
 name = "docs-organizer"
 compatibility_date = "2026-07-01"
