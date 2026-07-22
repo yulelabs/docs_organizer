@@ -114,3 +114,13 @@ apps/api      OCR API + worker
 apps/web      React UI
 packages/shared   Shared TypeScript types
 ```
+
+## Deploy (Neon + Railway + Cloudflare)
+
+See [docs/DEPLOY.md](docs/DEPLOY.md).
+
+- GitHub Actions: `.github/workflows/deploy.yml` (push to `main`)
+- One-shot after CLI login: `./scripts/provision-and-deploy.sh`
+
+Required GitHub secrets for CI: `DATABASE_URL`, `RAILWAY_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+
