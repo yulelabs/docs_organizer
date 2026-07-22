@@ -212,6 +212,23 @@ export function App() {
     }
   }
 
+  async function reparse() {
+    if (!selected) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api.reparseDocument(selected.id);
+      setDocuments((prev) =>
+        prev.map((d) => (d.id === result.document.id ? result.document : d)),
+      );
+      setDraft(result.document.fields);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Reparse failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function removeSelected() {
     if (!selected) return;
     if (!window.confirm(`Delete ${selected.originalName}?`)) return;
@@ -475,6 +492,14 @@ export function App() {
                   onClick={() => void reprocess()}
                 >
                   Re-run OCR
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  disabled={busy || !selected.rawText}
+                  onClick={() => void reparse()}
+                >
+                  Re-parse fields
                 </button>
                 <a
                   className="btn btn-secondary"

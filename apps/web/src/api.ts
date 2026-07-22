@@ -102,6 +102,13 @@ export const api = {
     );
   },
 
+  reparseDocument(id: string) {
+    return request<{ document: import("@docs-organizer/shared").DocumentRecord }>(
+      `/api/documents/${id}/reparse`,
+      { method: "POST", body: "{}" },
+    );
+  },
+
   getJob(id: string) {
     return request<{
       job: import("@docs-organizer/shared").OcrJobRecord;

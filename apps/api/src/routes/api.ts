@@ -13,7 +13,7 @@ import {
   updateDocument,
 } from "../db/documents.js";
 import { enqueueOcrJob } from "../services/jobs.js";
-import { buildOrganizedName } from "../services/invoice-parser.js";
+import { buildOrganizedName, parseInvoiceText } from "../services/invoice-parser.js";
 import { storage } from "../services/storage.js";
 import { emptyInvoiceFields, type InvoiceFields } from "@docs-organizer/shared";
 
@@ -210,13 +210,42 @@ apiRouter.get("/documents", async (req, res, next) => {
 
 apiRouter.get("/documents/:id", async (req, res, next) => {
   try {
-    const document = await getDocument(req.params.id);
+    const document = await getDocument(paramId(req.params.id));
     if (!document) {
       res.status(404).json({ error: "Document not found" });
       return;
     }
     const job = await getLatestOcrJob(document.id);
     res.json({ document, job });
+  } catch (err) {
+    next(err);
+  }
+});
+
+apiRouter.post("/documents/:id/reparse", async (req, res, next) => {
+  try {
+    const document = await getDocument(paramId(req.params.id));
+    if (!document) {
+      res.status(404).json({ error: "Document not found" });
+      return;
+    }
+    if (!document.rawText) {
+      res.status(400).json({ error: "No OCR text available to reparse" });
+      return;
+    }
+
+    const fields = parseInvoiceText(document.rawText);
+    const organized = buildOrganizedName(fields, document.originalName);
+    const updated = await updateDocument(document.id, {
+      fields,
+      organizedName: organized.organizedName,
+      organizedPath: organized.organizedPath,
+      status: "completed",
+      error: null,
+      processedAt: new Date().toISOString(),
+    });
+
+    res.json({ document: updated });
   } catch (err) {
     next(err);
   }
@@ -244,7 +273,7 @@ apiRouter.patch("/documents/:id", async (req, res, next) => {
       })
       .parse(req.body);
 
-    const document = await getDocument(req.params.id);
+    const document = await getDocument(paramId(req.params.id));
     if (!document) {
       res.status(404).json({ error: "Document not found" });
       return;
@@ -271,7 +300,7 @@ apiRouter.patch("/documents/:id", async (req, res, next) => {
 
 apiRouter.delete("/documents/:id", async (req, res, next) => {
   try {
-    const document = await getDocument(req.params.id);
+    const document = await getDocument(paramId(req.params.id));
     if (!document) {
       res.status(404).json({ error: "Document not found" });
       return;
@@ -286,7 +315,7 @@ apiRouter.delete("/documents/:id", async (req, res, next) => {
 
 apiRouter.get("/documents/:id/file", async (req, res, next) => {
   try {
-    const document = await getDocument(req.params.id);
+    const document = await getDocument(paramId(req.params.id));
     if (!document) {
       res.status(404).json({ error: "Document not found" });
       return;
