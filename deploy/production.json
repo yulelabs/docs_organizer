@@ -13,14 +13,12 @@
     "database": "neondb"
   },
   "cloudflare": {
-    "status": "blocked",
-    "reason": "API token authenticates but lacks Pages/Workers account permissions (HTTP 10000/9109)",
-    "accountIdProvided": "d22899d41e2f8a0c8178ace8ba91917a",
-    "neededPermissions": [
-      "Account.Cloudflare Pages:Edit",
-      "Account.Account Settings:Read"
-    ]
+    "status": "deployed",
+    "pagesUrl": "https://docs-organizer.pages.dev",
+    "project": "docs-organizer",
+    "accountId": "d22899d41e2f8a0c8178ace8ba91917a"
   },
-  "note": "UI is currently served from the Railway API until Cloudflare Pages permissions are fixed.",
-  "deployedAt": "2026-07-22T10:40:00Z"
+  "note": "Frontend on Cloudflare Pages; API/OCR on Railway; Neon Postgres.",
+  "deployedAt": "2026-07-22T10:47:07Z",
+  "frontendUrl": "https://docs-organizer.pages.dev"
 }

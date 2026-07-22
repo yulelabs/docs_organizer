@@ -30,9 +30,12 @@ async function main() {
   await fs.promises.mkdir(config.ocrTmpDir, { recursive: true });
 
   const app = express();
+  const corsOrigins = config.corsOrigin.split(",").map((v) => v.trim()).filter(Boolean);
   app.use(
     cors({
-      origin: config.corsOrigin.split(",").map((v) => v.trim()),
+      origin: corsOrigins.includes("*")
+        ? true
+        : corsOrigins,
     }),
   );
   app.use(express.json({ limit: "2mb" }));
