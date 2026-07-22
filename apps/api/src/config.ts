@@ -20,6 +20,8 @@ function required(name: string, fallback?: string): string {
 
 const isProd = (process.env.NODE_ENV ?? "development") === "production";
 
+export type OAuthProvider = "google" | "facebook" | "github";
+
 export const config = {
   port: Number(process.env.PORT ?? 3000),
   nodeEnv: process.env.NODE_ENV ?? "development",
@@ -28,6 +30,17 @@ export const config = {
     isProd ? undefined : "postgresql://docs:docs@localhost:5432/docs_organizer",
   ),
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
+  publicAppUrl:
+    process.env.PUBLIC_APP_URL ?? process.env.CORS_ORIGIN?.split(",")[0]?.trim() ??
+    "http://localhost:5173",
+  publicApiUrl:
+    process.env.PUBLIC_API_URL ?? `http://localhost:${process.env.PORT ?? 3000}`,
+  sessionSecret: required(
+    "SESSION_SECRET",
+    isProd ? undefined : "dev-session-secret-change-me",
+  ),
+  sessionDays: Number(process.env.SESSION_DAYS ?? 30),
+  cookieName: "docs_organizer_session",
   storageDriver: (process.env.STORAGE_DRIVER ?? "local") as "local" | "r2",
   localStorageDir: path.resolve(
     process.env.LOCAL_STORAGE_DIR ?? path.join(rootDir, "data/uploads"),
@@ -43,5 +56,24 @@ export const config = {
   ocrTmpDir: path.resolve(
     process.env.OCR_TMP_DIR ?? path.join(rootDir, "data/ocr-tmp"),
   ),
+  oauth: {
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+    },
+    facebook: {
+      clientId: process.env.FACEBOOK_APP_ID ?? "",
+      clientSecret: process.env.FACEBOOK_APP_SECRET ?? "",
+    },
+    github: {
+      clientId: process.env.GITHUB_CLIENT_ID ?? "",
+      clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "",
+    },
+  },
   isDev: !isProd,
 };
+
+export function oauthEnabled(provider: OAuthProvider): boolean {
+  const cfg = config.oauth[provider];
+  return Boolean(cfg.clientId && cfg.clientSecret);
+}

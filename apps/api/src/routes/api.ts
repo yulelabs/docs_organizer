@@ -16,6 +16,12 @@ import { enqueueOcrJob } from "../services/jobs.js";
 import { buildOrganizedName, parseInvoiceText } from "../services/invoice-parser.js";
 import { storage } from "../services/storage.js";
 import { emptyInvoiceFields, type InvoiceFields } from "@docs-organizer/shared";
+import {
+  attachUser,
+  requireAuth,
+  type AuthedRequest,
+} from "../middleware/auth.js";
+import { authRouter } from "./auth.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -56,11 +62,14 @@ function extensionFor(mimeType: string, originalName: string): string {
 
 export const apiRouter = Router();
 
+apiRouter.use(attachUser);
+apiRouter.use("/auth", authRouter);
+
 apiRouter.get("/health", (_req, res) => {
   res.json({ ok: true, storage: storage.mode() });
 });
 
-apiRouter.post("/uploads", async (req, res, next) => {
+apiRouter.post("/uploads", requireAuth, async (req: AuthedRequest, res, next) => {
   try {
     const body = z
       .object({
@@ -79,10 +88,11 @@ apiRouter.post("/uploads", async (req, res, next) => {
 
     const id = uuidv4();
     const ext = extensionFor(body.mimeType, body.fileName);
-    const storageKey = `invoices/${id}${ext}`;
+    const storageKey = `invoices/${req.user!.id}/${id}${ext}`;
 
     const document = await createDocument({
       id,
+      userId: req.user!.id,
       originalName: body.fileName,
       mimeType: body.mimeType,
       sizeBytes: body.sizeBytes ?? 0,
@@ -106,10 +116,11 @@ apiRouter.post("/uploads", async (req, res, next) => {
 
 apiRouter.put(
   "/uploads/:id/content",
+  requireAuth,
   upload.single("file"),
-  async (req, res, next) => {
+  async (req: AuthedRequest, res, next) => {
     try {
-      const document = await getDocument(paramId(req.params.id));
+      const document = await getDocument(paramId(req.params.id), req.user!.id);
       if (!document) {
         res.status(404).json({ error: "Document not found" });
         return;
@@ -143,7 +154,7 @@ apiRouter.put(
   },
 );
 
-apiRouter.post("/ocr-jobs", async (req, res, next) => {
+apiRouter.post("/ocr-jobs", requireAuth, async (req: AuthedRequest, res, next) => {
   try {
     const body = z
       .object({
@@ -151,42 +162,42 @@ apiRouter.post("/ocr-jobs", async (req, res, next) => {
       })
       .parse(req.body);
 
-    const document = await getDocument(body.documentId);
+    const document = await getDocument(body.documentId, req.user!.id);
     if (!document) {
       res.status(404).json({ error: "Document not found" });
       return;
-    }
-
-    if (document.sizeBytes <= 0 && storage.mode() === "local") {
-      // Still allow if file exists on disk from a direct put.
     }
 
     const job = await createOcrJob(document.id);
     await updateDocument(document.id, { status: "queued", error: null });
     await enqueueOcrJob({ jobId: job.id, documentId: document.id });
 
-    const refreshed = await getDocument(document.id);
+    const refreshed = await getDocument(document.id, req.user!.id);
     res.status(201).json({ job, document: refreshed });
   } catch (err) {
     next(err);
   }
 });
 
-apiRouter.get("/ocr-jobs/:id", async (req, res, next) => {
+apiRouter.get("/ocr-jobs/:id", requireAuth, async (req: AuthedRequest, res, next) => {
   try {
     const job = await getOcrJob(paramId(req.params.id));
     if (!job) {
       res.status(404).json({ error: "Job not found" });
       return;
     }
-    const document = await getDocument(job.documentId);
+    const document = await getDocument(job.documentId, req.user!.id);
+    if (!document) {
+      res.status(404).json({ error: "Job not found" });
+      return;
+    }
     res.json({ job, document });
   } catch (err) {
     next(err);
   }
 });
 
-apiRouter.get("/documents", async (req, res, next) => {
+apiRouter.get("/documents", requireAuth, async (req: AuthedRequest, res, next) => {
   try {
     const q = typeof req.query.q === "string" ? req.query.q : undefined;
     const status =
@@ -201,16 +212,22 @@ apiRouter.get("/documents", async (req, res, next) => {
     const limit = req.query.limit ? Number(req.query.limit) : 50;
     const offset = req.query.offset ? Number(req.query.offset) : 0;
 
-    const result = await listDocuments({ q, status, limit, offset });
+    const result = await listDocuments({
+      userId: req.user!.id,
+      q,
+      status,
+      limit,
+      offset,
+    });
     res.json(result);
   } catch (err) {
     next(err);
   }
 });
 
-apiRouter.get("/documents/:id", async (req, res, next) => {
+apiRouter.get("/documents/:id", requireAuth, async (req: AuthedRequest, res, next) => {
   try {
-    const document = await getDocument(paramId(req.params.id));
+    const document = await getDocument(paramId(req.params.id), req.user!.id);
     if (!document) {
       res.status(404).json({ error: "Document not found" });
       return;
@@ -222,36 +239,40 @@ apiRouter.get("/documents/:id", async (req, res, next) => {
   }
 });
 
-apiRouter.post("/documents/:id/reparse", async (req, res, next) => {
-  try {
-    const document = await getDocument(paramId(req.params.id));
-    if (!document) {
-      res.status(404).json({ error: "Document not found" });
-      return;
+apiRouter.post(
+  "/documents/:id/reparse",
+  requireAuth,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const document = await getDocument(paramId(req.params.id), req.user!.id);
+      if (!document) {
+        res.status(404).json({ error: "Document not found" });
+        return;
+      }
+      if (!document.rawText) {
+        res.status(400).json({ error: "No OCR text available to reparse" });
+        return;
+      }
+
+      const fields = parseInvoiceText(document.rawText);
+      const organized = buildOrganizedName(fields, document.originalName);
+      const updated = await updateDocument(document.id, {
+        fields,
+        organizedName: organized.organizedName,
+        organizedPath: organized.organizedPath,
+        status: "completed",
+        error: null,
+        processedAt: new Date().toISOString(),
+      });
+
+      res.json({ document: updated });
+    } catch (err) {
+      next(err);
     }
-    if (!document.rawText) {
-      res.status(400).json({ error: "No OCR text available to reparse" });
-      return;
-    }
+  },
+);
 
-    const fields = parseInvoiceText(document.rawText);
-    const organized = buildOrganizedName(fields, document.originalName);
-    const updated = await updateDocument(document.id, {
-      fields,
-      organizedName: organized.organizedName,
-      organizedPath: organized.organizedPath,
-      status: "completed",
-      error: null,
-      processedAt: new Date().toISOString(),
-    });
-
-    res.json({ document: updated });
-  } catch (err) {
-    next(err);
-  }
-});
-
-apiRouter.patch("/documents/:id", async (req, res, next) => {
+apiRouter.patch("/documents/:id", requireAuth, async (req: AuthedRequest, res, next) => {
   try {
     const body = z
       .object({
@@ -273,7 +294,7 @@ apiRouter.patch("/documents/:id", async (req, res, next) => {
       })
       .parse(req.body);
 
-    const document = await getDocument(paramId(req.params.id));
+    const document = await getDocument(paramId(req.params.id), req.user!.id);
     if (!document) {
       res.status(404).json({ error: "Document not found" });
       return;
@@ -298,9 +319,9 @@ apiRouter.patch("/documents/:id", async (req, res, next) => {
   }
 });
 
-apiRouter.delete("/documents/:id", async (req, res, next) => {
+apiRouter.delete("/documents/:id", requireAuth, async (req: AuthedRequest, res, next) => {
   try {
-    const document = await getDocument(paramId(req.params.id));
+    const document = await getDocument(paramId(req.params.id), req.user!.id);
     if (!document) {
       res.status(404).json({ error: "Document not found" });
       return;
@@ -313,9 +334,9 @@ apiRouter.delete("/documents/:id", async (req, res, next) => {
   }
 });
 
-apiRouter.get("/documents/:id/file", async (req, res, next) => {
+apiRouter.get("/documents/:id/file", requireAuth, async (req: AuthedRequest, res, next) => {
   try {
-    const document = await getDocument(paramId(req.params.id));
+    const document = await getDocument(paramId(req.params.id), req.user!.id);
     if (!document) {
       res.status(404).json({ error: "Document not found" });
       return;
@@ -333,9 +354,13 @@ apiRouter.get("/documents/:id/file", async (req, res, next) => {
   }
 });
 
-apiRouter.get("/export/csv", async (_req, res, next) => {
+apiRouter.get("/export/csv", requireAuth, async (req: AuthedRequest, res, next) => {
   try {
-    const { items } = await listDocuments({ limit: 1000, offset: 0 });
+    const { items } = await listDocuments({
+      userId: req.user!.id,
+      limit: 1000,
+      offset: 0,
+    });
     const header = [
       "id",
       "original_name",

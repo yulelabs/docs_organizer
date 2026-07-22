@@ -55,9 +55,10 @@ Optional: `RAILWAY_API_TOKEN` (account token) instead of project token.
 
 1. Neon → create project → copy connection string → GitHub secret `DATABASE_URL`
 2. Railway → New Project → Deploy from GitHub (`yulelabs/docs_organizer`) → set root Dockerfile `apps/api/Dockerfile` (or rely on `railway.toml`) → create project token → secret `RAILWAY_TOKEN`
-3. Set Railway variables: `DATABASE_URL`, `PORT=3000`, `OCR_LANG=por+eng`, `STORAGE_DRIVER=local`, `CORS_ORIGIN=<pages-url>`
-4. Cloudflare → API token (Pages Edit) + account id → secrets
-5. After first API domain exists, set variable `VITE_API_BASE` and redeploy Pages
-6. Merge/push to `main` (or run the workflow manually)
+3. Set Railway variables: `DATABASE_URL`, `PORT=3000`, `OCR_LANG=por+eng`, `STORAGE_DRIVER=local`, `CORS_ORIGIN=<pages-url>`, `PUBLIC_APP_URL=<pages-url>`, `PUBLIC_API_URL=<railway-api-url>`, `SESSION_SECRET=<long-random>`
+4. Optional OAuth: set `GOOGLE_CLIENT_*`, `FACEBOOK_APP_*`, and/or `GITHUB_CLIENT_*`. Register callbacks as `{PUBLIC_API_URL}/api/auth/oauth/{provider}/callback`
+5. Cloudflare → API token (Pages Edit) + account id → secrets
+6. After first API domain exists, set variable `VITE_API_BASE` and redeploy Pages
+7. Merge/push to `main` (or run the workflow manually) — run `npm run db:migrate` (or rely on boot migrate) so `users` / `sessions` tables exist
 
 Neon’s GitHub integration can also inject `NEON_API_KEY` automatically if you connect the repo in the Neon console.

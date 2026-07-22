@@ -10,6 +10,7 @@ import { query } from "./client.js";
 
 type DocumentRow = {
   id: string;
+  user_id: string | null;
   original_name: string;
   mime_type: string;
   size_bytes: string | number;
@@ -49,6 +50,7 @@ function parseFields(raw: InvoiceFields | string): InvoiceFields {
 export function mapDocument(row: DocumentRow): DocumentRecord {
   return {
     id: row.id,
+    userId: row.user_id,
     originalName: row.original_name,
     mimeType: row.mime_type,
     sizeBytes: Number(row.size_bytes),
@@ -80,17 +82,19 @@ export function mapJob(row: JobRow): OcrJobRecord {
 
 export async function createDocument(input: {
   id: string;
+  userId: string;
   originalName: string;
   mimeType: string;
   sizeBytes: number;
   storageKey: string;
 }): Promise<DocumentRecord> {
   const result = await query<DocumentRow>(
-    `INSERT INTO documents (id, original_name, mime_type, size_bytes, storage_key, status, fields)
-     VALUES ($1, $2, $3, $4, $5, 'uploaded', '{}'::jsonb)
+    `INSERT INTO documents (id, user_id, original_name, mime_type, size_bytes, storage_key, status, fields)
+     VALUES ($1, $2, $3, $4, $5, $6, 'uploaded', '{}'::jsonb)
      RETURNING *`,
     [
       input.id,
+      input.userId,
       input.originalName,
       input.mimeType,
       input.sizeBytes,
@@ -100,22 +104,28 @@ export async function createDocument(input: {
   return mapDocument(result.rows[0]);
 }
 
-export async function getDocument(id: string): Promise<DocumentRecord | null> {
-  const result = await query<DocumentRow>(
-    `SELECT * FROM documents WHERE id = $1`,
-    [id],
-  );
+export async function getDocument(
+  id: string,
+  userId?: string,
+): Promise<DocumentRecord | null> {
+  const result = userId
+    ? await query<DocumentRow>(
+        `SELECT * FROM documents WHERE id = $1 AND user_id = $2`,
+        [id, userId],
+      )
+    : await query<DocumentRow>(`SELECT * FROM documents WHERE id = $1`, [id]);
   return result.rows[0] ? mapDocument(result.rows[0]) : null;
 }
 
 export async function listDocuments(params: {
+  userId: string;
   q?: string;
   status?: DocumentStatus;
   limit?: number;
   offset?: number;
 }): Promise<{ items: DocumentRecord[]; total: number }> {
-  const filters: string[] = [];
-  const values: unknown[] = [];
+  const filters: string[] = ["user_id = $1"];
+  const values: unknown[] = [params.userId];
 
   if (params.status) {
     values.push(params.status);
@@ -133,7 +143,7 @@ export async function listDocuments(params: {
     );
   }
 
-  const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+  const where = `WHERE ${filters.join(" AND ")}`;
   const limit = Math.min(params.limit ?? 50, 200);
   const offset = params.offset ?? 0;
 

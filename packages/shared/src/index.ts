@@ -23,6 +23,7 @@ export interface InvoiceFields {
 
 export interface DocumentRecord {
   id: string;
+  userId: string | null;
   originalName: string;
   mimeType: string;
   sizeBytes: number;
@@ -36,6 +37,24 @@ export interface DocumentRecord {
   createdAt: string;
   updatedAt: string;
   processedAt: string | null;
+}
+
+export interface UserRecord {
+  id: string;
+  email: string;
+  name: string | null;
+  avatarUrl: string | null;
+  emailVerified: boolean;
+  hasPassword: boolean;
+  createdAt: string;
+}
+
+export type OAuthProvider = "google" | "facebook" | "github";
+
+export interface AuthSessionResponse {
+  user: UserRecord;
+  token: string;
+  expiresAt: string;
 }
 
 export interface OcrJobRecord {

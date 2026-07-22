@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import { ZodError } from "zod";
@@ -30,14 +31,18 @@ async function main() {
   await fs.promises.mkdir(config.ocrTmpDir, { recursive: true });
 
   const app = express();
-  const corsOrigins = config.corsOrigin.split(",").map((v) => v.trim()).filter(Boolean);
+  const corsOrigins = config.corsOrigin
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+
   app.use(
     cors({
-      origin: corsOrigins.includes("*")
-        ? true
-        : corsOrigins,
+      origin: corsOrigins.includes("*") ? true : corsOrigins,
+      credentials: true,
     }),
   );
+  app.use(cookieParser());
   app.use(express.json({ limit: "2mb" }));
 
   app.use("/api", apiRouter);
@@ -45,8 +50,9 @@ async function main() {
   app.get("/api", (_req, res) => {
     res.json({
       name: "docs-organizer-api",
-      version: "0.1.0",
+      version: "0.2.0",
       docs: "/api/health",
+      auth: "/api/auth/providers",
     });
   });
 
@@ -65,7 +71,7 @@ async function main() {
     app.get("/", (_req, res) => {
       res.json({
         name: "docs-organizer-api",
-        version: "0.1.0",
+        version: "0.2.0",
         docs: "/api/health",
       });
     });
@@ -101,6 +107,7 @@ async function main() {
   app.listen(config.port, () => {
     console.log(`API listening on http://localhost:${config.port}`);
     console.log(`Storage driver: ${config.storageDriver}`);
+    console.log(`Public app URL: ${config.publicAppUrl}`);
   });
 }
 

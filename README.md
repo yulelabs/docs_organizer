@@ -16,7 +16,7 @@ Drop PDFs or photos, extract text (Portuguese + English), parse vendor / date / 
 | API + OCR | https://docs-organizer-api-production.up.railway.app |
 | Health | https://docs-organizer-api-production.up.railway.app/api/health |
 
-No authentication yet (planned later).
+Authentication: email/password, plus optional Google / Facebook / GitHub OAuth. Documents are scoped per user.
 
 ---
 
@@ -55,11 +55,12 @@ No authentication yet (planned later).
 
 ### Request flow
 
-1. Browser uploads a file (local API multipart, or signed URL → R2).
-2. UI calls `POST /api/ocr-jobs` with the document id.
-3. API enqueues a **pg-boss** job and returns immediately.
-4. Worker downloads the file, converts PDF pages with **pdftoppm**, runs **Tesseract** (`por+eng`), parses fields, stores results in Postgres.
-5. UI polls `GET /api/ocr-jobs/:id` until complete, then shows editable fields and an organized path.
+1. User signs in (email/password or OAuth). Session token is stored as a cookie and in localStorage for cross-origin API calls.
+2. Browser uploads a file (local API multipart, or signed URL → R2) under the authenticated user.
+3. UI calls `POST /api/ocr-jobs` with the document id.
+4. API enqueues a **pg-boss** job and returns immediately.
+5. Worker downloads the file, converts PDF pages with **pdftoppm**, runs **Tesseract** (`por+eng`), parses fields, stores results in Postgres.
+6. UI polls `GET /api/ocr-jobs/:id` until complete, then shows editable fields and an organized path.
 
 ### Why this stack
 
@@ -97,6 +98,8 @@ No UI framework/CSS library — custom CSS with Fraunces + Figtree fonts.
 | --- | --- |
 | Node.js 22 | Runtime |
 | Express 5 | HTTP API |
+| `bcryptjs` | Password hashing |
+| `cookie-parser` | Session cookie parsing |
 | `pg` | Postgres client |
 | pg-boss | Background OCR jobs |
 | Zod | Request validation |
@@ -136,9 +139,10 @@ docs_organizer/
 │   │   ├── Dockerfile
 │   │   └── src/
 │   │       ├── server.ts
-│   │       ├── routes/
-│   │       ├── services/    # ocr, parser, storage, jobs
-│   │       └── db/
+│   │       ├── routes/      # api + auth
+│   │       ├── middleware/  # session auth
+│   │       ├── services/    # ocr, parser, storage, jobs, oauth
+│   │       └── db/          # schema, users, documents
 │   └── web/                 # React + Vite UI
 ├── packages/shared/         # Shared TS types
 ├── scripts/
@@ -172,6 +176,7 @@ You only need **all cloud keys for production**. Locally you can run with Docker
 | Railway | Production API | Project/account token + service env vars |
 | Cloudflare Pages | Production UI | Account ID + API token (Pages Edit) |
 | Cloudflare R2 | Optional durable files | R2 access keys + bucket |
+| Google / Facebook / GitHub OAuth | Optional social login | App client ID + secret per provider |
 
 ---
 
@@ -268,12 +273,27 @@ R2_BUCKET=docs-organizer
 | `DATABASE_URL` | Yes | Postgres connection string |
 | `PORT` | No | Default `3000` |
 | `NODE_ENV` | No | `development` / `production` |
-| `CORS_ORIGIN` | Yes (prod) | Comma-separated allowed origins (Pages URL). Use `*` only for quick tests |
+| `CORS_ORIGIN` | Yes (prod) | Comma-separated allowed origins (Pages URL). Do **not** use `*` with credentialed auth |
+| `PUBLIC_APP_URL` | Yes (prod) | Frontend origin used for OAuth redirects (e.g. Pages URL) |
+| `PUBLIC_API_URL` | Yes (prod) | API origin used in OAuth callback URLs |
+| `SESSION_SECRET` | Yes (prod) | Random secret (≥32 chars) for session config |
+| `SESSION_DAYS` | No | Session lifetime in days (default `30`) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional | Enable Google sign-in |
+| `FACEBOOK_APP_ID` / `FACEBOOK_APP_SECRET` | Optional | Enable Facebook sign-in |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | Optional | Enable GitHub sign-in |
 | `STORAGE_DRIVER` | No | `local` (default) or `r2` |
 | `LOCAL_STORAGE_DIR` | No | Default `./data/uploads` |
 | `OCR_LANG` | No | Default `por+eng` |
 | `OCR_TMP_DIR` | No | Temp OCR working dir |
 | `R2_*` | If `r2` | See above |
+
+OAuth callback URLs (register in each provider console):
+
+```text
+{PUBLIC_API_URL}/api/auth/oauth/google/callback
+{PUBLIC_API_URL}/api/auth/oauth/facebook/callback
+{PUBLIC_API_URL}/api/auth/oauth/github/callback
+```
 
 #### Web (build-time)
 
@@ -294,6 +314,10 @@ OCR_LANG=por+eng
 LOCAL_STORAGE_DIR=/app/data/uploads
 OCR_TMP_DIR=/app/data/ocr-tmp
 CORS_ORIGIN=https://docs-organizer.pages.dev
+PUBLIC_APP_URL=https://docs-organizer.pages.dev
+PUBLIC_API_URL=https://docs-organizer-api-production.up.railway.app
+SESSION_SECRET=<long-random-string>
+# Optional OAuth keys…
 ```
 
 ---
@@ -465,18 +489,27 @@ More detail: [docs/DEPLOY.md](docs/DEPLOY.md).
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/health` | Liveness |
+| `GET` | `/api/health` | Liveness (public) |
+| `GET` | `/api/auth/providers` | Password + enabled OAuth providers |
+| `POST` | `/api/auth/register` | Email/password signup |
+| `POST` | `/api/auth/login` | Email/password login |
+| `POST` | `/api/auth/logout` | End session |
+| `GET` | `/api/auth/me` | Current user |
+| `GET` | `/api/auth/oauth/:provider` | Start OAuth (`google` / `facebook` / `github`) |
+| `GET` | `/api/auth/oauth/:provider/callback` | OAuth callback |
 | `POST` | `/api/uploads` | Create document + upload target |
 | `PUT` | `/api/uploads/:id/content` | Local multipart upload |
 | `POST` | `/api/ocr-jobs` | Enqueue OCR `{ "documentId": "..." }` |
 | `GET` | `/api/ocr-jobs/:id` | Poll job + document |
-| `GET` | `/api/documents` | List / search |
+| `GET` | `/api/documents` | List / search (current user) |
 | `GET` | `/api/documents/:id` | Detail |
 | `POST` | `/api/documents/:id/reparse` | Re-parse fields from stored OCR text (no re-scan) |
 | `PATCH` | `/api/documents/:id` | Manually correct fields |
 | `DELETE` | `/api/documents/:id` | Delete |
-| `GET` | `/api/documents/:id/file` | Download / preview |
+| `GET` | `/api/documents/:id/file` | Download / preview (`?access_token=` for new-tab links) |
 | `GET` | `/api/export/csv` | Export CSV |
+
+Document and upload routes require authentication (`Authorization: Bearer …` and/or session cookie).
 
 ### What OCR extracts
 
@@ -505,7 +538,8 @@ npm run deploy:provision # scripts/provision-and-deploy.sh
 
 ## Notes & limitations
 
-- **No auth** yet — anyone with the URL can upload/list documents.
+- Email/password works out of the box; social providers appear in the UI only when their env keys are set.
+- Existing documents without `user_id` (pre-auth data) are hidden from authenticated lists.
 - With `STORAGE_DRIVER=local` on Railway, uploaded files live on the container filesystem and can disappear on redeploy unless you add a volume or switch to R2.
 - OCR quality depends on scan quality; use **Re-parse fields** after parser improvements, or **Re-run OCR** for a fresh scan.
 - Cloudflare / Railway / Neon free tiers are enough for light hobby usage; heavy OCR volume will cost Railway compute.
