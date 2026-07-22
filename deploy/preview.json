@@ -1,0 +1,7 @@
+{
+  "type": "cloudflare-temporary-preview",
+  "url": "https://docs-organizer-preview.kindly-waterlily.workers.dev",
+  "claimUrl": "https://dash.cloudflare.com/claim-preview?claimToken=lNgYK_MJEoDWt2la3YfK3PBdQiTn93yTGt6NEVYqp1U",
+  "note": "Ephemeral Cloudflare preview account (not the production yulelabs account). Claim within 60 minutes of creation if you want to keep it.",
+  "createdAt": "2026-07-22T10:20:00Z"
+}

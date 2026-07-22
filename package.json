@@ -15,6 +15,7 @@
     "start:api": "npm run start -w @docs-organizer/api",
     "db:migrate": "npm run db:migrate -w @docs-organizer/api",
     "test": "npm run test -w @docs-organizer/api",
+    "deploy:provision": "bash ./scripts/provision-and-deploy.sh",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "engines": {
