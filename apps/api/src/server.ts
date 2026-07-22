@@ -5,7 +5,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import { ZodError } from "zod";
-import { config } from "./config.js";
+import { config, inspectOAuthConfig } from "./config.js";
 import { apiRouter } from "./routes/api.js";
 import { assertOcrToolsAvailable } from "./services/ocr.js";
 import { startOcrWorker } from "./services/jobs.js";
@@ -108,6 +108,16 @@ async function main() {
     console.log(`API listening on http://localhost:${config.port}`);
     console.log(`Storage driver: ${config.storageDriver}`);
     console.log(`Public app URL: ${config.publicAppUrl}`);
+    console.log(`Public API URL: ${config.publicApiUrl}`);
+    const oauth = inspectOAuthConfig();
+    if (oauth.enabled.length) {
+      console.log(`OAuth enabled: ${oauth.enabled.join(", ")}`);
+    } else {
+      console.log("OAuth: none (email/password only)");
+    }
+    for (const warning of oauth.warnings) {
+      console.warn(`[oauth] ${warning}`);
+    }
   });
 }
 

@@ -51,6 +51,13 @@ export interface UserRecord {
 
 export type OAuthProvider = "google" | "facebook" | "github";
 
+export interface AuthProvidersResponse {
+  password: boolean;
+  oauth: OAuthProvider[];
+  /** Misconfigured / incomplete OAuth setup — for browser console warnings only. */
+  warnings?: string[];
+}
+
 export interface AuthSessionResponse {
   user: UserRecord;
   token: string;

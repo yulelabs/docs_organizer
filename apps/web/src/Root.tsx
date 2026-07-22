@@ -24,7 +24,12 @@ export function Root() {
   useEffect(() => {
     const { token, error } = consumeOAuthCallback();
     if (token) setStoredToken(token);
-    if (error) setAuthError(error);
+    if (error) {
+      console.warn(
+        `[docs-organizer auth] Social login failed (${error}). Email/password sign-in still works.`,
+      );
+      setAuthError(error);
+    }
 
     const existing = token || getStoredToken();
     if (!existing) {

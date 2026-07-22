@@ -18,7 +18,7 @@ import {
 import {
   beginOAuth,
   finishOAuth,
-  listEnabledOAuthProviders,
+  getOAuthProviderReport,
 } from "../services/oauth.js";
 
 export const authRouter = Router();
@@ -26,9 +26,11 @@ export const authRouter = Router();
 authRouter.use(attachUser);
 
 authRouter.get("/providers", (_req, res) => {
+  const report = getOAuthProviderReport();
   res.json({
     password: true,
-    oauth: listEnabledOAuthProviders(),
+    oauth: report.oauth,
+    warnings: report.warnings,
   });
 });
 

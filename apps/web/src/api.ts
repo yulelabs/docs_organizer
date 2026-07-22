@@ -1,4 +1,5 @@
 import type {
+  AuthProvidersResponse,
   AuthSessionResponse,
   DocumentRecord,
   InvoiceFields,
@@ -63,9 +64,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   getProviders() {
-    return request<{ password: boolean; oauth: OAuthProvider[] }>(
-      "/api/auth/providers",
-    );
+    return request<AuthProvidersResponse>("/api/auth/providers");
   },
 
   me() {

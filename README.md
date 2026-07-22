@@ -26,10 +26,11 @@ Authentication: email/password, plus optional Google / Facebook / GitHub OAuth. 
 2. [Tech stack](#tech-stack)
 3. [Repository layout](#repository-layout)
 4. [Services & keys](#services--keys)
-5. [Run locally](#run-locally)
-6. [Deploy](#deploy)
-7. [API overview](#api-overview)
-8. [Useful scripts](#useful-scripts)
+5. [Authentication provisioning (DevOps)](#authentication-provisioning-devops)
+6. [Run locally](#run-locally)
+7. [Deploy](#deploy)
+8. [API overview](#api-overview)
+9. [Useful scripts](#useful-scripts)
 
 ---
 
@@ -287,23 +288,146 @@ R2_BUCKET=docs-organizer
 | `OCR_TMP_DIR` | No | Temp OCR working dir |
 | `R2_*` | If `r2` | See above |
 
-OAuth callback URLs (register in each provider console):
+OAuth callback URLs (register in each provider console) — **production values**:
 
 ```text
-{PUBLIC_API_URL}/api/auth/oauth/google/callback
-{PUBLIC_API_URL}/api/auth/oauth/facebook/callback
-{PUBLIC_API_URL}/api/auth/oauth/github/callback
+https://docs-organizer-api-production.up.railway.app/api/auth/oauth/google/callback
+https://docs-organizer-api-production.up.railway.app/api/auth/oauth/facebook/callback
+https://docs-organizer-api-production.up.railway.app/api/auth/oauth/github/callback
 ```
+
+---
+
+## Authentication provisioning (DevOps)
+
+Email/password auth is the default and works as soon as the core session vars below are set. Social buttons appear **only** when a provider has a valid client id **and** secret; incomplete or broken OAuth config is ignored in the UI (a warning is logged in the browser console and API logs). Users can always sign in with email/password.
+
+### Production URLs (this project)
+
+| Surface | URL |
+| --- | --- |
+| Frontend (Cloudflare Pages) | `https://docs-organizer.pages.dev` |
+| API (Railway) | `https://docs-organizer-api-production.up.railway.app` |
+| Health | `https://docs-organizer-api-production.up.railway.app/api/health` |
+| Auth providers | `https://docs-organizer-api-production.up.railway.app/api/auth/providers` |
+
+### 1. Required — enable email/password (do this first)
+
+On the Railway service `docs-organizer-api`, set:
+
+| Variable | Exact production value |
+| --- | --- |
+| `SESSION_SECRET` | Long random string (generate below) |
+| `PUBLIC_APP_URL` | `https://docs-organizer.pages.dev` |
+| `PUBLIC_API_URL` | `https://docs-organizer-api-production.up.railway.app` |
+| `CORS_ORIGIN` | `https://docs-organizer.pages.dev` |
+
+Generate a secret:
+
+```bash
+openssl rand -hex 32
+```
+
+Railway CLI (from a machine logged into the project):
+
+```bash
+railway variable set SESSION_SECRET="$(openssl rand -hex 32)" --service docs-organizer-api
+railway variable set PUBLIC_APP_URL="https://docs-organizer.pages.dev" --service docs-organizer-api
+railway variable set PUBLIC_API_URL="https://docs-organizer-api-production.up.railway.app" --service docs-organizer-api
+railway variable set CORS_ORIGIN="https://docs-organizer.pages.dev" --service docs-organizer-api
+```
+
+Or paste the same four variables in **Railway → docs-organizer-api → Variables**, then redeploy.
+
+**Verify**
+
+1. Open `https://docs-organizer.pages.dev` → you should see Sign in / Create account (no Google/Facebook/GitHub buttons yet).
+2. Create an account with email + password (≥8 chars) → land in the app.
+3. Sign out and sign back in.
+4. `GET https://docs-organizer-api-production.up.railway.app/api/auth/providers` should return `{"password":true,"oauth":[],"warnings":[]}`.
+
+> Do **not** set `CORS_ORIGIN=*`. Credentialed auth needs the exact Pages origin.
+
+Pages must be built with:
+
+```text
+VITE_API_BASE=https://docs-organizer-api-production.up.railway.app
+```
+
+(Already used for the live Pages deploy.)
+
+### 2. Optional — Google / Facebook / GitHub
+
+Skip this section if you only want email/password. Leave all OAuth env vars empty; the UI will not mention social login.
+
+For each provider you want:
+
+1. Create an OAuth app in the provider console.
+2. Set the **Authorized redirect / callback URI** to the matching URL below (exact match).
+3. Copy client id + secret into Railway.
+4. Redeploy the API.
+
+#### Callback URLs (production)
+
+| Provider | Authorized redirect URI |
+| --- | --- |
+| Google | `https://docs-organizer-api-production.up.railway.app/api/auth/oauth/google/callback` |
+| Facebook | `https://docs-organizer-api-production.up.railway.app/api/auth/oauth/facebook/callback` |
+| GitHub | `https://docs-organizer-api-production.up.railway.app/api/auth/oauth/github/callback` |
+
+Also allow the app origin where the console asks for a JavaScript origin / site URL:
+
+```text
+https://docs-organizer.pages.dev
+```
+
+#### Env vars per provider
+
+| Provider | Railway variables |
+| --- | --- |
+| Google | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
+| Facebook | `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET` |
+| GitHub | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` |
+
+Example (Google only):
+
+```bash
+railway variable set GOOGLE_CLIENT_ID="....apps.googleusercontent.com" --service docs-organizer-api
+railway variable set GOOGLE_CLIENT_SECRET="...." --service docs-organizer-api
+```
+
+#### Provider console quick notes
+
+- **Google** — [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → OAuth 2.0 Client ID (Web application) → add the Google callback URI above. Enable the Google People / OpenID scopes used by the consent screen (`openid`, `email`, `profile`).
+- **Facebook** — [Meta Developers](https://developers.facebook.com/) → App → Facebook Login → Valid OAuth Redirect URIs → Facebook callback URI. Request `email` permission.
+- **GitHub** — [GitHub Developer Settings → OAuth Apps](https://github.com/settings/developers) → Authorization callback URL = GitHub callback URI. Enable `read:user` and `user:email`.
+
+#### Behaviour when OAuth is wrong
+
+| Situation | UI | Logs |
+| --- | --- | --- |
+| No OAuth env vars | Email/password only; **no** social buttons or hints | API: `OAuth: none (email/password only)` |
+| Only id or only secret set | Social button **hidden** for that provider | Browser console + API: warning that config is incomplete |
+| Keys too short / clearly invalid | Social button **hidden** | Same warnings |
+| Keys present but provider rejects login | Email/password still works; failed social attempt may show a short error after redirect | Browser console: `Social login failed (...)` |
+
+### 3. Checklist after auth changes
+
+1. Redeploy Railway so env vars and schema migration (`users` / `sessions` / `oauth_*`) apply.
+2. Confirm `SESSION_SECRET`, `PUBLIC_*`, and `CORS_ORIGIN` (section 1).
+3. Smoke-test email/password on `https://docs-organizer.pages.dev`.
+4. If enabling social login, register callback URIs, set both id + secret, redeploy, then confirm the button appears and completes a login.
+5. Open DevTools → Console: there should be **no** `[docs-organizer auth]` warnings when config is clean.
 
 #### Web (build-time)
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `VITE_API_BASE` | Prod Pages | Absolute API origin, no trailing slash |
+| `VITE_API_BASE` | Prod Pages | Absolute API origin, no trailing slash — production: `https://docs-organizer-api-production.up.railway.app` |
 
 #### Railway environment variables
 
-Minimum production set:
+Minimum production set (email/password):
 
 ```env
 DATABASE_URL=postgresql://...
@@ -438,9 +562,14 @@ npm run build -w @docs-organizer/web
 npx wrangler pages project create docs-organizer --production-branch=main || true
 npx wrangler pages deploy apps/web/dist --project-name=docs-organizer --branch=main
 
-# 4) Point API CORS at Pages
+# 4) Auth + CORS for Pages (email/password)
+railway variable set SESSION_SECRET="$(openssl rand -hex 32)" --service docs-organizer-api
+railway variable set PUBLIC_APP_URL="https://docs-organizer.pages.dev" --service docs-organizer-api
+railway variable set PUBLIC_API_URL="https://docs-organizer-api-production.up.railway.app" --service docs-organizer-api
 railway variable set CORS_ORIGIN="https://docs-organizer.pages.dev" --service docs-organizer-api
 ```
+
+See [Authentication provisioning (DevOps)](#authentication-provisioning-devops) for OAuth callbacks and optional social login.
 
 ### Option B — GitHub Actions
 
@@ -479,9 +608,10 @@ More detail: [docs/DEPLOY.md](docs/DEPLOY.md).
 ### Post-deploy checklist
 
 1. `GET /api/health` returns `{ "ok": true }`.
-2. Open Pages URL → drop a sample invoice → job completes.
-3. Confirm CORS: browser network tab shows `access-control-allow-origin` for the Pages origin.
-4. Prefer R2 or a Railway volume if you need files to survive redeploys.
+2. Confirm auth vars (`SESSION_SECRET`, `PUBLIC_APP_URL`, `PUBLIC_API_URL`, `CORS_ORIGIN`) — see [Authentication provisioning](#authentication-provisioning-devops).
+3. Open Pages URL → create account with email/password → upload a sample invoice → job completes.
+4. Confirm CORS: browser network tab shows `access-control-allow-origin` for `https://docs-organizer.pages.dev`.
+5. Prefer R2 or a Railway volume if you need files to survive redeploys.
 
 ---
 

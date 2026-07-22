@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { config, oauthEnabled, type OAuthProvider } from "../config.js";
+import { config, inspectOAuthConfig, oauthEnabled, type OAuthProvider } from "../config.js";
 import {
   consumeOAuthState,
   findOrCreateOAuthUser,
@@ -35,7 +35,15 @@ export function sanitizeRedirectTo(redirectTo?: string | null): string {
 }
 
 export function listEnabledOAuthProviders(): OAuthProvider[] {
-  return (["google", "facebook", "github"] as OAuthProvider[]).filter(oauthEnabled);
+  return inspectOAuthConfig().enabled;
+}
+
+export function getOAuthProviderReport(): {
+  oauth: OAuthProvider[];
+  warnings: string[];
+} {
+  const { enabled, warnings } = inspectOAuthConfig();
+  return { oauth: enabled, warnings };
 }
 
 export async function beginOAuth(

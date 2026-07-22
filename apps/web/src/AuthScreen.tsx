@@ -4,6 +4,13 @@ import { api, setStoredToken } from "./api";
 
 type Mode = "login" | "register";
 
+function warnOAuthIssues(warnings: string[] | undefined) {
+  if (!warnings?.length) return;
+  for (const warning of warnings) {
+    console.warn(`[docs-organizer auth] ${warning}`);
+  }
+}
+
 export function AuthScreen(props: {
   onAuthenticated: (user: UserRecord, token: string) => void;
   initialError?: string | null;
@@ -19,8 +26,17 @@ export function AuthScreen(props: {
   useEffect(() => {
     api
       .getProviders()
-      .then((data) => setOauth(data.oauth))
-      .catch(() => setOauth([]));
+      .then((data) => {
+        setOauth(data.oauth ?? []);
+        warnOAuthIssues(data.warnings);
+      })
+      .catch((err) => {
+        setOauth([]);
+        console.warn(
+          "[docs-organizer auth] Could not load auth providers; email/password still available.",
+          err,
+        );
+      });
   }, []);
 
   async function submit(event: React.FormEvent) {
@@ -129,12 +145,7 @@ export function AuthScreen(props: {
               ))}
             </div>
           </div>
-        ) : (
-          <p className="auth-hint">
-            Social login appears here once Google / Facebook / GitHub OAuth keys
-            are configured on the API.
-          </p>
-        )}
+        ) : null}
       </section>
     </div>
   );
