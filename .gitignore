@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.log
+.DS_Store
+coverage/
+.vite/
+tmp/
+data/
+uploads/
+.ocr-tmp/
+*.tsbuildinfo
+.wrangler/
+.dev.vars

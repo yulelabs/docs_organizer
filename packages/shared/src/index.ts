@@ -1,0 +1,78 @@
+export type DocumentStatus =
+  | "uploaded"
+  | "queued"
+  | "processing"
+  | "completed"
+  | "failed";
+
+export type JobStatus = "pending" | "active" | "completed" | "failed";
+
+export interface InvoiceFields {
+  vendor: string | null;
+  invoiceNumber: string | null;
+  invoiceDate: string | null;
+  dueDate: string | null;
+  currency: string | null;
+  subtotal: number | null;
+  tax: number | null;
+  total: number | null;
+  nif: string | null;
+  category: string | null;
+  notes: string | null;
+}
+
+export interface DocumentRecord {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  storageKey: string;
+  status: DocumentStatus;
+  organizedName: string | null;
+  organizedPath: string | null;
+  rawText: string | null;
+  fields: InvoiceFields;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+  processedAt: string | null;
+}
+
+export interface OcrJobRecord {
+  id: string;
+  documentId: string;
+  status: JobStatus;
+  progress: number;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
+export interface CreateUploadResponse {
+  document: DocumentRecord;
+  upload: {
+    mode: "local" | "r2";
+    url: string;
+    headers?: Record<string, string>;
+  };
+}
+
+export interface CreateOcrJobResponse {
+  job: OcrJobRecord;
+  document: DocumentRecord;
+}
+
+export const emptyInvoiceFields = (): InvoiceFields => ({
+  vendor: null,
+  invoiceNumber: null,
+  invoiceDate: null,
+  dueDate: null,
+  currency: null,
+  subtotal: null,
+  tax: null,
+  total: null,
+  nif: null,
+  category: null,
+  notes: null,
+});

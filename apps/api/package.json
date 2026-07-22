@@ -1,0 +1,39 @@
+{
+  "name": "@docs-organizer/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json && mkdir -p dist/db && cp src/db/schema.sql dist/db/schema.sql",
+    "start": "node dist/server.js",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "test": "tsx src/services/invoice-parser.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "worker": "tsx src/worker.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.787.0",
+    "@aws-sdk/s3-request-presigner": "^3.787.0",
+    "@docs-organizer/shared": "*",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "mime-types": "^3.0.1",
+    "multer": "^1.4.5-lts.2",
+    "pg": "^8.14.1",
+    "pg-boss": "^10.1.6",
+    "uuid": "^11.1.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/mime-types": "^2.1.4",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.14.1",
+    "@types/pg": "^8.11.13",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3"
+  }
+}
