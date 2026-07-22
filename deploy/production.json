@@ -1,0 +1,26 @@
+{
+  "apiUrl": "https://docs-organizer-api-production.up.railway.app",
+  "healthUrl": "https://docs-organizer-api-production.up.railway.app/api/health",
+  "railway": {
+    "projectId": "25c3bb47-0579-4995-b6b9-e578882b48ed",
+    "projectName": "luminous-flow",
+    "serviceName": "docs-organizer-api",
+    "serviceId": "68be4e31-9abf-437d-9d84-9227f16c0237",
+    "environment": "production"
+  },
+  "neon": {
+    "host": "ep-old-violet-av8f3xub-pooler.c-11.us-east-1.aws.neon.tech",
+    "database": "neondb"
+  },
+  "cloudflare": {
+    "status": "blocked",
+    "reason": "API token authenticates but lacks Pages/Workers account permissions (HTTP 10000/9109)",
+    "accountIdProvided": "d22899d41e2f8a0c8178ace8ba91917a",
+    "neededPermissions": [
+      "Account.Cloudflare Pages:Edit",
+      "Account.Account Settings:Read"
+    ]
+  },
+  "note": "UI is currently served from the Railway API until Cloudflare Pages permissions are fixed.",
+  "deployedAt": "2026-07-22T10:40:00Z"
+}
