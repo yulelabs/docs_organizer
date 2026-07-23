@@ -3,6 +3,7 @@ import type {
   DocumentRecord,
   InvoiceFields,
   OcrJobRecord,
+  UserRecord,
 } from "@docs-organizer/shared";
 import { api } from "./api";
 
@@ -25,7 +26,10 @@ function statusLabel(status: string) {
   return status.replace("_", " ");
 }
 
-export function App() {
+export function App(props: {
+  user: UserRecord;
+  onLogout: () => void;
+}) {
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<OcrJobRecord | null>(null);
@@ -257,9 +261,19 @@ export function App() {
           </p>
         </div>
         <div className="top-actions">
-          <a className="btn btn-secondary" href={api.exportCsvUrl()}>
+          <span className="user-chip" title={props.user.email}>
+            {props.user.name || props.user.email}
+          </span>
+          <button
+            className="btn btn-secondary"
+            type="button"
+            disabled={busy}
+            onClick={() => void api.downloadCsv().catch((err) =>
+              setError(err instanceof Error ? err.message : "Export failed"),
+            )}
+          >
             Export CSV
-          </a>
+          </button>
           <button
             className="btn"
             type="button"
@@ -267,6 +281,13 @@ export function App() {
             onClick={() => refresh().catch(() => undefined)}
           >
             Refresh
+          </button>
+          <button
+            className="btn btn-secondary"
+            type="button"
+            onClick={props.onLogout}
+          >
+            Sign out
           </button>
         </div>
       </header>

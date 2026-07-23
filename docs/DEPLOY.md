@@ -55,9 +55,27 @@ Optional: `RAILWAY_API_TOKEN` (account token) instead of project token.
 
 1. Neon → create project → copy connection string → GitHub secret `DATABASE_URL`
 2. Railway → New Project → Deploy from GitHub (`yulelabs/docs_organizer`) → set root Dockerfile `apps/api/Dockerfile` (or rely on `railway.toml`) → create project token → secret `RAILWAY_TOKEN`
-3. Set Railway variables: `DATABASE_URL`, `PORT=3000`, `OCR_LANG=por+eng`, `STORAGE_DRIVER=local`, `CORS_ORIGIN=<pages-url>`
-4. Cloudflare → API token (Pages Edit) + account id → secrets
-5. After first API domain exists, set variable `VITE_API_BASE` and redeploy Pages
-6. Merge/push to `main` (or run the workflow manually)
+3. Set Railway variables for email/password auth (required):
+
+```text
+SESSION_SECRET=<openssl rand -hex 32>
+PUBLIC_APP_URL=https://docs-organizer.pages.dev
+PUBLIC_API_URL=https://docs-organizer-api-production.up.railway.app
+CORS_ORIGIN=https://docs-organizer.pages.dev
+```
+
+Also set: `DATABASE_URL`, `PORT=3000`, `OCR_LANG=por+eng`, `STORAGE_DRIVER=local`.
+
+4. Optional OAuth — see README [Authentication provisioning (DevOps)](../README.md#authentication-provisioning-devops). Callbacks:
+
+```text
+https://docs-organizer-api-production.up.railway.app/api/auth/oauth/google/callback
+https://docs-organizer-api-production.up.railway.app/api/auth/oauth/facebook/callback
+https://docs-organizer-api-production.up.railway.app/api/auth/oauth/github/callback
+```
+
+5. Cloudflare → API token (Pages Edit) + account id → secrets
+6. After first API domain exists, set variable `VITE_API_BASE=https://docs-organizer-api-production.up.railway.app` and redeploy Pages
+7. Merge/push to `main` (or run the workflow manually) — boot migrate creates `users` / `sessions` tables
 
 Neon’s GitHub integration can also inject `NEON_API_KEY` automatically if you connect the repo in the Neon console.
