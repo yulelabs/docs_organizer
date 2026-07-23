@@ -6,7 +6,7 @@ import {
   createDocument,
   createOcrJob,
   deleteDocument,
-  getDocument,
+  getDocumentForUser,
   getLatestOcrJob,
   getOcrJob,
   listDocuments,
@@ -120,7 +120,7 @@ apiRouter.put(
   upload.single("file"),
   async (req: AuthedRequest, res, next) => {
     try {
-      const document = await getDocument(paramId(req.params.id), req.user!.id);
+      const document = await getDocumentForUser(paramId(req.params.id), req.user!.id);
       if (!document) {
         res.status(404).json({ error: "Document not found" });
         return;
@@ -142,10 +142,14 @@ apiRouter.put(
         req.file.mimetype || document.mimeType,
       );
 
-      const updated = await updateDocument(document.id, {
-        sizeBytes: req.file.size,
-        status: "uploaded",
-      });
+      const updated = await updateDocument(
+        document.id,
+        {
+          sizeBytes: req.file.size,
+          status: "uploaded",
+        },
+        req.user!.id,
+      );
 
       res.json({ document: updated });
     } catch (err) {
@@ -162,17 +166,17 @@ apiRouter.post("/ocr-jobs", requireAuth, async (req: AuthedRequest, res, next) =
       })
       .parse(req.body);
 
-    const document = await getDocument(body.documentId, req.user!.id);
+    const document = await getDocumentForUser(body.documentId, req.user!.id);
     if (!document) {
       res.status(404).json({ error: "Document not found" });
       return;
     }
 
     const job = await createOcrJob(document.id);
-    await updateDocument(document.id, { status: "queued", error: null });
+    await updateDocument(document.id, { status: "queued", error: null }, req.user!.id);
     await enqueueOcrJob({ jobId: job.id, documentId: document.id });
 
-    const refreshed = await getDocument(document.id, req.user!.id);
+    const refreshed = await getDocumentForUser(document.id, req.user!.id);
     res.status(201).json({ job, document: refreshed });
   } catch (err) {
     next(err);
@@ -186,7 +190,7 @@ apiRouter.get("/ocr-jobs/:id", requireAuth, async (req: AuthedRequest, res, next
       res.status(404).json({ error: "Job not found" });
       return;
     }
-    const document = await getDocument(job.documentId, req.user!.id);
+    const document = await getDocumentForUser(job.documentId, req.user!.id);
     if (!document) {
       res.status(404).json({ error: "Job not found" });
       return;
@@ -227,7 +231,7 @@ apiRouter.get("/documents", requireAuth, async (req: AuthedRequest, res, next) =
 
 apiRouter.get("/documents/:id", requireAuth, async (req: AuthedRequest, res, next) => {
   try {
-    const document = await getDocument(paramId(req.params.id), req.user!.id);
+    const document = await getDocumentForUser(paramId(req.params.id), req.user!.id);
     if (!document) {
       res.status(404).json({ error: "Document not found" });
       return;
@@ -244,7 +248,7 @@ apiRouter.post(
   requireAuth,
   async (req: AuthedRequest, res, next) => {
     try {
-      const document = await getDocument(paramId(req.params.id), req.user!.id);
+      const document = await getDocumentForUser(paramId(req.params.id), req.user!.id);
       if (!document) {
         res.status(404).json({ error: "Document not found" });
         return;
@@ -256,14 +260,18 @@ apiRouter.post(
 
       const fields = parseInvoiceText(document.rawText);
       const organized = buildOrganizedName(fields, document.originalName);
-      const updated = await updateDocument(document.id, {
-        fields,
-        organizedName: organized.organizedName,
-        organizedPath: organized.organizedPath,
-        status: "completed",
-        error: null,
-        processedAt: new Date().toISOString(),
-      });
+      const updated = await updateDocument(
+        document.id,
+        {
+          fields,
+          organizedName: organized.organizedName,
+          organizedPath: organized.organizedPath,
+          status: "completed",
+          error: null,
+          processedAt: new Date().toISOString(),
+        },
+        req.user!.id,
+      );
 
       res.json({ document: updated });
     } catch (err) {
@@ -294,7 +302,7 @@ apiRouter.patch("/documents/:id", requireAuth, async (req: AuthedRequest, res, n
       })
       .parse(req.body);
 
-    const document = await getDocument(paramId(req.params.id), req.user!.id);
+    const document = await getDocumentForUser(paramId(req.params.id), req.user!.id);
     if (!document) {
       res.status(404).json({ error: "Document not found" });
       return;
@@ -307,11 +315,15 @@ apiRouter.patch("/documents/:id", requireAuth, async (req: AuthedRequest, res, n
     };
 
     const organized = buildOrganizedName(fields, document.originalName);
-    const updated = await updateDocument(document.id, {
-      fields,
-      organizedName: organized.organizedName,
-      organizedPath: organized.organizedPath,
-    });
+    const updated = await updateDocument(
+      document.id,
+      {
+        fields,
+        organizedName: organized.organizedName,
+        organizedPath: organized.organizedPath,
+      },
+      req.user!.id,
+    );
 
     res.json({ document: updated });
   } catch (err) {
@@ -321,13 +333,13 @@ apiRouter.patch("/documents/:id", requireAuth, async (req: AuthedRequest, res, n
 
 apiRouter.delete("/documents/:id", requireAuth, async (req: AuthedRequest, res, next) => {
   try {
-    const document = await getDocument(paramId(req.params.id), req.user!.id);
+    const document = await getDocumentForUser(paramId(req.params.id), req.user!.id);
     if (!document) {
       res.status(404).json({ error: "Document not found" });
       return;
     }
     await storage.deleteObject(document.storageKey);
-    await deleteDocument(document.id);
+    await deleteDocument(document.id, req.user!.id);
     res.status(204).send();
   } catch (err) {
     next(err);
@@ -336,7 +348,7 @@ apiRouter.delete("/documents/:id", requireAuth, async (req: AuthedRequest, res, 
 
 apiRouter.get("/documents/:id/file", requireAuth, async (req: AuthedRequest, res, next) => {
   try {
-    const document = await getDocument(paramId(req.params.id), req.user!.id);
+    const document = await getDocumentForUser(paramId(req.params.id), req.user!.id);
     if (!document) {
       res.status(404).json({ error: "Document not found" });
       return;
