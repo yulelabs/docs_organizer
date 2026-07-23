@@ -1,7 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import bcrypt from "bcryptjs";
 import type { OAuthProvider } from "../config.js";
-import type { RoleSlug, UserRecord } from "@docs-organizer/shared";
+import type { AppLanguage, RoleSlug, UserRecord } from "@docs-organizer/shared";
 import { query } from "./client.js";
 
 export type { UserRecord };
@@ -13,12 +13,17 @@ type UserRow = {
   name: string | null;
   avatar_url: string | null;
   email_verified: boolean;
+  preferred_language?: string | null;
   created_at: Date | string;
   updated_at?: Date | string;
 };
 
 function toIso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function mapLanguage(value: string | null | undefined): AppLanguage {
+  return value === "en" ? "en" : "pt";
 }
 
 export function mapUser(row: UserRow, roles: RoleSlug[] = []): UserRecord {
@@ -30,6 +35,7 @@ export function mapUser(row: UserRow, roles: RoleSlug[] = []): UserRecord {
     emailVerified: row.email_verified,
     hasPassword: Boolean(row.password_hash),
     roles,
+    preferredLanguage: mapLanguage(row.preferred_language),
     createdAt: toIso(row.created_at),
   };
 }
@@ -160,6 +166,7 @@ export async function updateUserDetails(
     email?: string;
     name?: string | null;
     emailVerified?: boolean;
+    preferredLanguage?: AppLanguage;
   },
 ): Promise<UserRecord> {
   const sets: string[] = ["updated_at = NOW()"];
@@ -177,6 +184,10 @@ export async function updateUserDetails(
     values.push(patch.emailVerified);
     sets.push(`email_verified = $${values.length}`);
   }
+  if (patch.preferredLanguage !== undefined) {
+    values.push(patch.preferredLanguage);
+    sets.push(`preferred_language = $${values.length}`);
+  }
 
   values.push(id);
   const result = await query<UserRow>(
@@ -185,6 +196,13 @@ export async function updateUserDetails(
   );
   if (!result.rows[0]) throw new Error("User not found");
   return withRoles(result.rows[0]);
+}
+
+export async function setPreferredLanguage(
+  id: string,
+  language: AppLanguage,
+): Promise<UserRecord> {
+  return updateUserDetails(id, { preferredLanguage: language });
 }
 
 export async function setUserPassword(

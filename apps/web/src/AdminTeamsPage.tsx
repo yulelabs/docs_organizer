@@ -5,11 +5,13 @@ import type {
   UserRecord,
 } from "@docs-organizer/shared";
 import { api } from "./api";
+import { LanguageSwitcher, useI18n } from "./i18n/I18nProvider";
 
 export function AdminTeamsPage(props: {
   currentUser: UserRecord;
   onBack: () => void;
 }) {
+  const { t } = useI18n();
   const [teams, setTeams] = useState<TeamRecord[]>([]);
   const [users, setUsers] = useState<AdminUserRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +44,7 @@ export function AdminTeamsPage(props: {
 
   useEffect(() => {
     refresh().catch((err) =>
-      setError(err instanceof Error ? err.message : "Failed to load teams"),
+      setError(err instanceof Error ? err.message : t("loadTeamsFailed")),
     );
   }, []);
 
@@ -67,7 +69,7 @@ export function AdminTeamsPage(props: {
       await refresh();
       setSelectedId(created.team.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Create failed");
+      setError(err instanceof Error ? err.message : t("createFailed"));
     } finally {
       setBusy(false);
     }
@@ -86,7 +88,7 @@ export function AdminTeamsPage(props: {
       await api.adminSetTeamMembers(selected.id, memberIds);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Update failed");
+      setError(err instanceof Error ? err.message : t("updateFailed"));
     } finally {
       setBusy(false);
     }
@@ -94,7 +96,7 @@ export function AdminTeamsPage(props: {
 
   async function removeTeam() {
     if (!selected) return;
-    if (!window.confirm(`Delete team “${selected.name}”?`)) return;
+    if (!window.confirm(t("deleteTeamConfirm", { name: selected.name }))) return;
     setBusy(true);
     setError(null);
     try {
@@ -102,7 +104,7 @@ export function AdminTeamsPage(props: {
       setSelectedId(null);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      setError(err instanceof Error ? err.message : t("deleteFailed"));
     } finally {
       setBusy(false);
     }
@@ -120,14 +122,13 @@ export function AdminTeamsPage(props: {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
-          <h1>Manage teams</h1>
-          <p>
-            Teams can be empty or include Team Member users only.
-          </p>
+          <h1>{t("adminTeamsTitle")}</h1>
+          <p>{t("adminTeamsSubtitle")}</p>
         </div>
         <div className="top-actions">
+          <LanguageSwitcher className="lang-switcher-compact" />
           <button className="btn btn-secondary" type="button" onClick={props.onBack}>
-            Back to archive
+            {t("backToArchive")}
           </button>
         </div>
       </header>
@@ -137,8 +138,8 @@ export function AdminTeamsPage(props: {
       <div className="admin-layout">
         <section className="panel admin-panel">
           <div className="admin-section-head">
-            <h2>Teams</h2>
-            <span className="meta">{teams.length} total</span>
+            <h2>{t("teams")}</h2>
+            <span className="meta">{t("totalCount", { count: teams.length })}</span>
           </div>
           <ul className="doc-list">
             {teams.map((team) => (
@@ -150,25 +151,26 @@ export function AdminTeamsPage(props: {
                 <div>
                   <strong>{team.name}</strong>
                   <div className="meta">
-                    {team.memberIds.length} member
-                    {team.memberIds.length === 1 ? "" : "s"}
+                    {team.memberIds.length === 1
+                      ? t("memberCount", { count: team.memberIds.length })
+                      : t("memberCountPlural", { count: team.memberIds.length })}
                   </div>
                 </div>
               </li>
             ))}
             {teams.length === 0 ? (
-              <li className="empty">No teams yet.</li>
+              <li className="empty">{t("noTeamsYet")}</li>
             ) : null}
           </ul>
         </section>
 
         <section className="panel admin-panel">
           <div className="admin-section-head">
-            <h2>Create team</h2>
+            <h2>{t("createTeam")}</h2>
           </div>
           <form className="admin-form" onSubmit={(e) => void createTeam(e)}>
             <label>
-              Name
+              {t("name")}
               <input
                 required
                 value={createName}
@@ -176,7 +178,7 @@ export function AdminTeamsPage(props: {
               />
             </label>
             <label>
-              Description
+              {t("description")}
               <textarea
                 rows={3}
                 value={createDescription}
@@ -184,21 +186,21 @@ export function AdminTeamsPage(props: {
               />
             </label>
             <button className="btn" type="submit" disabled={busy}>
-              Create team
+              {t("createTeam")}
             </button>
           </form>
         </section>
 
         <section className="panel admin-panel">
           <div className="admin-section-head">
-            <h2>Edit team</h2>
+            <h2>{t("editTeam")}</h2>
           </div>
           {!selected ? (
-            <p className="empty">Select a team to edit.</p>
+            <p className="empty">{t("selectTeam")}</p>
           ) : (
             <form className="admin-form" onSubmit={(e) => void saveTeam(e)}>
               <label>
-                Name
+                {t("name")}
                 <input
                   required
                   value={name}
@@ -206,7 +208,7 @@ export function AdminTeamsPage(props: {
                 />
               </label>
               <label>
-                Description
+                {t("description")}
                 <textarea
                   rows={3}
                   value={description}
@@ -214,11 +216,10 @@ export function AdminTeamsPage(props: {
                 />
               </label>
               <fieldset className="role-fieldset">
-                <legend>Members (Team Member role only)</legend>
+                <legend>{t("membersTeamOnly")}</legend>
                 {teamMembers.length === 0 ? (
                   <p className="meta">
-                    No users have the Team Member role yet. Assign it under
-                    Manage users.
+                    {t("noTeamMembersYet")}
                   </p>
                 ) : (
                   teamMembers.map((user) => (
@@ -235,7 +236,7 @@ export function AdminTeamsPage(props: {
               </fieldset>
               <div className="admin-actions">
                 <button className="btn" type="submit" disabled={busy}>
-                  Save team
+                  {t("saveTeam")}
                 </button>
                 <button
                   className="btn btn-danger"
@@ -243,7 +244,7 @@ export function AdminTeamsPage(props: {
                   disabled={busy}
                   onClick={() => void removeTeam()}
                 >
-                  Delete team
+                  {t("deleteTeam")}
                 </button>
               </div>
             </form>

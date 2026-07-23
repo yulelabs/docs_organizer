@@ -7,9 +7,23 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT,
   avatar_url TEXT,
   email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+  preferred_language TEXT NOT NULL DEFAULT 'pt'
+    CHECK (preferred_language IN ('pt', 'en')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Upgrade path for existing databases
+ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_language TEXT;
+UPDATE users SET preferred_language = 'pt' WHERE preferred_language IS NULL;
+DO $$
+BEGIN
+  ALTER TABLE users ALTER COLUMN preferred_language SET DEFAULT 'pt';
+  ALTER TABLE users ALTER COLUMN preferred_language SET NOT NULL;
+EXCEPTION
+  WHEN others THEN
+    RAISE NOTICE 'preferred_language constraint skipped: %', SQLERRM;
+END $$;
 
 CREATE TABLE IF NOT EXISTS oauth_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -1,5 +1,6 @@
 import type {
   AdminUserRecord,
+  AppLanguage,
   AuthProvidersResponse,
   AuthSessionResponse,
   DocumentRecord,
@@ -74,7 +75,19 @@ export const api = {
     return request<{ user: UserRecord }>("/api/auth/me");
   },
 
-  register(input: { email: string; password: string; name?: string }) {
+  updatePreferences(input: { preferredLanguage: AppLanguage }) {
+    return request<{ user: UserRecord }>("/api/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+  },
+
+  register(input: {
+    email: string;
+    password: string;
+    name?: string;
+    preferredLanguage?: AppLanguage;
+  }) {
     return request<AuthSessionResponse>("/api/auth/register", {
       method: "POST",
       body: JSON.stringify(input),

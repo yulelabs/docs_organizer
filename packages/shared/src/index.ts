@@ -9,6 +9,10 @@ export type JobStatus = "pending" | "active" | "completed" | "failed";
 
 export type RoleSlug = "user" | "super_user" | "team_member";
 
+export type AppLanguage = "pt" | "en";
+
+export const DEFAULT_LANGUAGE: AppLanguage = "pt";
+
 export interface RoleRecord {
   slug: RoleSlug;
   name: string;
@@ -55,6 +59,7 @@ export interface UserRecord {
   emailVerified: boolean;
   hasPassword: boolean;
   roles: RoleSlug[];
+  preferredLanguage: AppLanguage;
   createdAt: string;
 }
 

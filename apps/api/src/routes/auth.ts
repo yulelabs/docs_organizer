@@ -6,6 +6,7 @@ import {
   createUserWithPassword,
   deleteSessionByToken,
   findUserByEmail,
+  setPreferredLanguage,
   verifyPassword,
 } from "../db/users.js";
 import {
@@ -42,6 +43,24 @@ authRouter.get("/me", (req: AuthedRequest, res) => {
   res.json({ user: req.user });
 });
 
+authRouter.patch("/me", requireAuth, async (req: AuthedRequest, res, next) => {
+  try {
+    const body = z
+      .object({
+        preferredLanguage: z.enum(["pt", "en"]),
+      })
+      .parse(req.body);
+
+    const user = await setPreferredLanguage(
+      req.user!.id,
+      body.preferredLanguage,
+    );
+    res.json({ user });
+  } catch (err) {
+    next(err);
+  }
+});
+
 authRouter.post("/register", async (req, res, next) => {
   try {
     const body = z
@@ -49,6 +68,7 @@ authRouter.post("/register", async (req, res, next) => {
         email: z.string().email().max(320),
         password: z.string().min(8).max(200),
         name: z.string().min(1).max(120).optional(),
+        preferredLanguage: z.enum(["pt", "en"]).optional(),
       })
       .parse(req.body);
 
@@ -63,10 +83,13 @@ authRouter.post("/register", async (req, res, next) => {
       password: body.password,
       name: body.name,
     });
-    const session = await createSession(user.id, config.sessionDays);
+    const withLang = body.preferredLanguage
+      ? await setPreferredLanguage(user.id, body.preferredLanguage)
+      : user;
+    const session = await createSession(withLang.id, config.sessionDays);
     setSessionCookie(res, session.token, session.expiresAt);
     res.status(201).json({
-      user,
+      user: withLang,
       token: session.token,
       expiresAt: session.expiresAt.toISOString(),
     });
