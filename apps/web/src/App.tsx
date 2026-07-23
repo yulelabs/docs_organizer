@@ -7,14 +7,16 @@ import type {
 } from "@docs-organizer/shared";
 import { isSuperUser } from "@docs-organizer/shared";
 import { api } from "./api";
+import { LanguageSwitcher, useI18n } from "./i18n/I18nProvider";
+import type { MessageKey } from "./i18n/messages";
 
 type UploadNotice = { id: string; name: string; state: string };
 
-function formatMoney(fields: InvoiceFields): string {
+function formatMoney(fields: InvoiceFields, language: string): string {
   if (fields.total == null) return "—";
   const currency = fields.currency ?? "EUR";
   try {
-    return new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat(language === "pt" ? "pt-PT" : "en-GB", {
       style: "currency",
       currency,
     }).format(fields.total);
@@ -23,16 +25,13 @@ function formatMoney(fields: InvoiceFields): string {
   }
 }
 
-function statusLabel(status: string) {
-  return status.replace("_", " ");
-}
-
 export function App(props: {
   user: UserRecord;
   onLogout: () => void;
   onOpenUsers?: () => void;
   onOpenTeams?: () => void;
 }) {
+  const { t, language } = useI18n();
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<OcrJobRecord | null>(null);
@@ -45,6 +44,19 @@ export function App(props: {
   const [draft, setDraft] = useState<InvoiceFields | null>(null);
   const [pending, startTransition] = useTransition();
   const pollRef = useRef<number | null>(null);
+
+  const statusLabels: Record<string, MessageKey> = {
+    uploaded: "statusUploaded",
+    queued: "statusQueued",
+    processing: "statusProcessing",
+    completed: "statusCompleted",
+    failed: "statusFailed",
+  };
+
+  function statusLabel(status: string) {
+    const key = statusLabels[status];
+    return key ? t(key) : status.replace("_", " ");
+  }
 
   const selected = useMemo(
     () => documents.find((d) => d.id === selectedId) ?? null,
@@ -74,7 +86,7 @@ export function App(props: {
   useEffect(() => {
     startTransition(() => {
       refresh().catch((err) =>
-        setError(err instanceof Error ? err.message : "Failed to load"),
+        setError(err instanceof Error ? err.message : t("failedLoad")),
       );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -83,7 +95,7 @@ export function App(props: {
   useEffect(() => {
     const handle = window.setTimeout(() => {
       refresh().catch((err) =>
-        setError(err instanceof Error ? err.message : "Failed to load"),
+        setError(err instanceof Error ? err.message : t("failedLoad")),
       );
     }, 250);
     return () => window.clearTimeout(handle);
@@ -127,63 +139,54 @@ export function App(props: {
   async function processFiles(fileList: FileList | File[]) {
     const files = Array.from(fileList);
     if (!files.length) return;
-
     setBusy(true);
     setError(null);
-
     try {
       for (const file of files) {
-        const noticeId = crypto.randomUUID();
+        const noticeId = `${Date.now()}-${file.name}`;
         setNotices((prev) => [
-          { id: noticeId, name: file.name, state: "Uploading…" },
           ...prev,
+          { id: noticeId, name: file.name, state: t("uploading") },
         ]);
-
         const created = await api.createUpload({
           fileName: file.name,
           mimeType: file.type || "application/octet-stream",
           sizeBytes: file.size,
         });
-
         await api.uploadFile(created.document.id, created.upload, file);
         setNotices((prev) =>
           prev.map((n) =>
-            n.id === noticeId ? { ...n, state: "Queued for OCR…" } : n,
+            n.id === noticeId ? { ...n, state: t("queuedOcr") } : n,
           ),
         );
-
-        const started = await api.startOcr(created.document.id);
-        setDocuments((prev) => [started.document, ...prev]);
-        setSelectedId(started.document.id);
-        setSelectedJob(started.job);
-        setDraft(started.document.fields);
+        await api.startOcr(created.document.id);
         setNotices((prev) =>
           prev.map((n) =>
-            n.id === noticeId ? { ...n, state: "Processing" } : n,
+            n.id === noticeId ? { ...n, state: t("processing") } : n,
           ),
         );
+        await refresh(created.document.id);
+        setSelectedId(created.document.id);
       }
-      await refresh(selectedId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      setError(err instanceof Error ? err.message : t("uploadFailed"));
     } finally {
       setBusy(false);
-      window.setTimeout(() => setNotices([]), 3500);
+      window.setTimeout(() => setNotices([]), 2500);
     }
   }
 
   async function selectDocument(id: string) {
     setSelectedId(id);
-    setError(null);
+    setBusy(true);
     try {
       const detail = await api.getDocument(id);
       setSelectedJob(detail.job);
       setDraft(detail.document.fields);
-      setDocuments((prev) =>
-        prev.map((d) => (d.id === detail.document.id ? detail.document : d)),
-      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to open document");
+      setError(err instanceof Error ? err.message : t("openFailed"));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -191,13 +194,13 @@ export function App(props: {
     if (!selected || !draft) return;
     setBusy(true);
     try {
-      const result = await api.updateDocument(selected.id, draft);
+      const updated = await api.updateDocument(selected.id, draft);
       setDocuments((prev) =>
-        prev.map((d) => (d.id === result.document.id ? result.document : d)),
+        prev.map((d) => (d.id === updated.document.id ? updated.document : d)),
       );
-      setDraft(result.document.fields);
+      setDraft(updated.document.fields);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      setError(err instanceof Error ? err.message : t("saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -207,13 +210,13 @@ export function App(props: {
     if (!selected) return;
     setBusy(true);
     try {
-      const started = await api.startOcr(selected.id);
-      setSelectedJob(started.job);
+      const result = await api.startOcr(selected.id);
+      setSelectedJob(result.job);
       setDocuments((prev) =>
-        prev.map((d) => (d.id === started.document.id ? started.document : d)),
+        prev.map((d) => (d.id === result.document.id ? result.document : d)),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "OCR failed to start");
+      setError(err instanceof Error ? err.message : t("ocrFailed"));
     } finally {
       setBusy(false);
     }
@@ -222,7 +225,6 @@ export function App(props: {
   async function reparse() {
     if (!selected) return;
     setBusy(true);
-    setError(null);
     try {
       const result = await api.reparseDocument(selected.id);
       setDocuments((prev) =>
@@ -230,7 +232,7 @@ export function App(props: {
       );
       setDraft(result.document.fields);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Reparse failed");
+      setError(err instanceof Error ? err.message : t("reparseFailed"));
     } finally {
       setBusy(false);
     }
@@ -238,7 +240,6 @@ export function App(props: {
 
   async function removeSelected() {
     if (!selected) return;
-    if (!window.confirm(`Delete ${selected.originalName}?`)) return;
     setBusy(true);
     try {
       await api.deleteDocument(selected.id);
@@ -247,23 +248,34 @@ export function App(props: {
       setDraft(null);
       await refresh(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      setError(err instanceof Error ? err.message : t("deleteFailed"));
     } finally {
       setBusy(false);
     }
   }
 
+  const fieldDefs = [
+    ["vendor", "fieldVendor"],
+    ["invoiceNumber", "fieldInvoiceNumber"],
+    ["invoiceDate", "fieldInvoiceDate"],
+    ["dueDate", "fieldDueDate"],
+    ["currency", "fieldCurrency"],
+    ["total", "fieldTotal"],
+    ["tax", "fieldTax"],
+    ["subtotal", "fieldSubtotal"],
+    ["nif", "fieldNif"],
+    ["category", "fieldCategory"],
+  ] as const;
+
   return (
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
-          <h1>Docs Organizer</h1>
-          <p>
-            Drop invoices and receipts. OCR extracts the details and renames
-            them into a clean archive.
-          </p>
+          <h1>{t("brandName")}</h1>
+          <p>{t("appTagline")}</p>
         </div>
         <div className="top-actions">
+          <LanguageSwitcher className="lang-switcher-compact" />
           <span className="user-chip" title={props.user.email}>
             {props.user.name || props.user.email}
           </span>
@@ -274,14 +286,14 @@ export function App(props: {
                 type="button"
                 onClick={props.onOpenUsers}
               >
-                Manage users
+                {t("manageUsers")}
               </button>
               <button
                 className="btn btn-secondary"
                 type="button"
                 onClick={props.onOpenTeams}
               >
-                Manage teams
+                {t("manageTeams")}
               </button>
             </>
           ) : null}
@@ -289,11 +301,13 @@ export function App(props: {
             className="btn btn-secondary"
             type="button"
             disabled={busy}
-            onClick={() => void api.downloadCsv().catch((err) =>
-              setError(err instanceof Error ? err.message : "Export failed"),
-            )}
+            onClick={() =>
+              void api.downloadCsv().catch((err) =>
+                setError(err instanceof Error ? err.message : t("exportFailed")),
+              )
+            }
           >
-            Export CSV
+            {t("exportCsv")}
           </button>
           <button
             className="btn"
@@ -301,14 +315,14 @@ export function App(props: {
             disabled={busy}
             onClick={() => refresh().catch(() => undefined)}
           >
-            Refresh
+            {t("refresh")}
           </button>
           <button
             className="btn btn-secondary"
             type="button"
             onClick={props.onLogout}
           >
-            Sign out
+            {t("signOut")}
           </button>
         </div>
       </header>
@@ -335,9 +349,8 @@ export function App(props: {
             }}
           >
             <div>
-              <h2>{dragging ? "Release to organize" : "Drop invoices here"}</h2>
-              <p>PDF, PNG, JPG, WEBP, or TIFF — Portuguese + English OCR.</p>
-              <p className="hint">or click to browse files</p>
+              <h2>{dragging ? t("dropTitleActive") : t("dropTitle")}</h2>
+              <p className="hint">{t("dropHint")}</p>
             </div>
             <input
               className="file-input"
@@ -363,29 +376,29 @@ export function App(props: {
 
           <div className="toolbar">
             <input
-              placeholder="Search vendor, invoice #, filename…"
+              placeholder={t("searchPlaceholder")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              aria-label="Search documents"
+              aria-label={t("searchAria")}
             />
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              aria-label="Filter by status"
+              aria-label={t("filterStatusAria")}
               style={{ maxWidth: 180 }}
             >
-              <option value="">All statuses</option>
-              <option value="uploaded">Uploaded</option>
-              <option value="queued">Queued</option>
-              <option value="processing">Processing</option>
-              <option value="completed">Completed</option>
-              <option value="failed">Failed</option>
+              <option value="">{t("allStatuses")}</option>
+              <option value="uploaded">{t("statusUploaded")}</option>
+              <option value="queued">{t("statusQueued")}</option>
+              <option value="processing">{t("statusProcessing")}</option>
+              <option value="completed">{t("statusCompleted")}</option>
+              <option value="failed">{t("statusFailed")}</option>
             </select>
           </div>
 
           {documents.length === 0 ? (
             <div className="empty">
-              {pending ? "Loading…" : "No documents yet. Drop a file to begin."}
+              {pending ? t("loadingDocs") : t("noDocuments")}
             </div>
           ) : (
             <ul className="doc-list">
@@ -396,13 +409,11 @@ export function App(props: {
                   onClick={() => void selectDocument(doc.id)}
                 >
                   <div>
-                    <strong>
-                      {doc.organizedName ?? doc.originalName}
-                    </strong>
+                    <strong>{doc.organizedName ?? doc.originalName}</strong>
                     <div className="meta">
-                      {doc.fields.vendor ?? "Unknown vendor"} ·{" "}
-                      {doc.fields.invoiceDate ?? "No date"} ·{" "}
-                      {formatMoney(doc.fields)}
+                      {doc.fields.vendor ?? t("unknownVendor")} ·{" "}
+                      {doc.fields.invoiceDate ?? t("noDate")} ·{" "}
+                      {formatMoney(doc.fields, language)}
                     </div>
                   </div>
                   <span className={`status ${doc.status}`}>
@@ -416,9 +427,7 @@ export function App(props: {
 
         <section className="panel">
           {!selected || !draft ? (
-            <div className="empty">
-              Select a document to review extracted invoice data.
-            </div>
+            <div className="empty">{t("selectDocument")}</div>
           ) : (
             <div className="detail">
               <header>
@@ -438,7 +447,7 @@ export function App(props: {
                 selectedJob.status === "active") ? (
                 <div>
                   <div className="meta" style={{ marginBottom: 6 }}>
-                    OCR progress: {selectedJob.progress}%
+                    {t("ocrProgress", { progress: selectedJob.progress })}
                   </div>
                   <div className="progress">
                     <span style={{ width: `${selectedJob.progress}%` }} />
@@ -451,29 +460,12 @@ export function App(props: {
               ) : null}
 
               <div className="fields">
-                {(
-                  [
-                    ["vendor", "Vendor"],
-                    ["invoiceNumber", "Invoice #"],
-                    ["invoiceDate", "Invoice date"],
-                    ["dueDate", "Due date"],
-                    ["currency", "Currency"],
-                    ["total", "Total"],
-                    ["tax", "Tax / IVA"],
-                    ["subtotal", "Subtotal"],
-                    ["nif", "NIF / VAT"],
-                    ["category", "Category"],
-                  ] as const
-                ).map(([key, label]) => (
+                {fieldDefs.map(([key, labelKey]) => (
                   <div className="field" key={key}>
-                    <label htmlFor={key}>{label}</label>
+                    <label htmlFor={key}>{t(labelKey)}</label>
                     <input
                       id={key}
-                      value={
-                        draft[key] == null
-                          ? ""
-                          : String(draft[key])
-                      }
+                      value={draft[key] == null ? "" : String(draft[key])}
                       onChange={(e) => {
                         const value = e.target.value;
                         setDraft((prev) => {
@@ -495,7 +487,7 @@ export function App(props: {
                   </div>
                 ))}
                 <div className="field full">
-                  <label htmlFor="notes">Notes</label>
+                  <label htmlFor="notes">{t("fieldNotes")}</label>
                   <textarea
                     id="notes"
                     rows={3}
@@ -512,7 +504,7 @@ export function App(props: {
               {selected.rawText ? (
                 <div>
                   <div className="field">
-                    <label>Extracted text</label>
+                    <label>{t("rawText")}</label>
                   </div>
                   <div className="raw-text">{selected.rawText}</div>
                 </div>
@@ -525,7 +517,7 @@ export function App(props: {
                   disabled={busy}
                   onClick={() => void saveFields()}
                 >
-                  Save changes
+                  {t("saveFields")}
                 </button>
                 <button
                   className="btn btn-secondary"
@@ -533,7 +525,7 @@ export function App(props: {
                   disabled={busy}
                   onClick={() => void reprocess()}
                 >
-                  Re-run OCR
+                  {t("rerunOcr")}
                 </button>
                 <button
                   className="btn btn-secondary"
@@ -541,7 +533,7 @@ export function App(props: {
                   disabled={busy || !selected.rawText}
                   onClick={() => void reparse()}
                 >
-                  Re-parse fields
+                  {t("reparse")}
                 </button>
                 <a
                   className="btn btn-secondary"
@@ -549,7 +541,7 @@ export function App(props: {
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Open file
+                  {t("openFile")}
                 </a>
                 <button
                   className="btn btn-danger"
@@ -557,7 +549,7 @@ export function App(props: {
                   disabled={busy}
                   onClick={() => void removeSelected()}
                 >
-                  Delete
+                  {t("delete")}
                 </button>
               </div>
             </div>

@@ -5,6 +5,7 @@ import { AdminTeamsPage } from "./AdminTeamsPage";
 import { AdminUsersPage } from "./AdminUsersPage";
 import { App } from "./App";
 import { AuthScreen } from "./AuthScreen";
+import { I18nProvider, useI18n } from "./i18n/I18nProvider";
 
 type AppView = "archive" | "admin-users" | "admin-teams";
 
@@ -27,37 +28,20 @@ function viewFromHash(): AppView {
   return "archive";
 }
 
-export function Root() {
-  const [user, setUser] = useState<UserRecord | null>(null);
-  const [booting, setBooting] = useState(true);
-  const [authError, setAuthError] = useState<string | null>(null);
+function BootShell() {
+  const { t } = useI18n();
+  return (
+    <div className="auth-shell">
+      <p className="auth-hint">{t("loading")}</p>
+    </div>
+  );
+}
+
+function AuthenticatedApp(props: {
+  user: UserRecord;
+  setUser: (user: UserRecord | null) => void;
+}) {
   const [view, setView] = useState<AppView>(() => viewFromHash());
-
-  useEffect(() => {
-    const { token, error } = consumeOAuthCallback();
-    if (token) setStoredToken(token);
-    if (error) {
-      console.warn(
-        `[docs-organizer auth] Social login failed (${error}). Email/password sign-in still works.`,
-      );
-      setAuthError(error);
-    }
-
-    const existing = token || getStoredToken();
-    if (!existing) {
-      setBooting(false);
-      return;
-    }
-
-    api
-      .me()
-      .then((data) => setUser(data.user))
-      .catch(() => {
-        setStoredToken(null);
-        setUser(null);
-      })
-      .finally(() => setBooting(false));
-  }, []);
 
   useEffect(() => {
     function onHashChange() {
@@ -88,52 +72,31 @@ export function Root() {
       // ignore
     }
     setStoredToken(null);
-    setUser(null);
+    props.setUser(null);
     navigate("archive");
   }
 
-  if (booting) {
-    return (
-      <div className="auth-shell">
-        <p className="auth-hint">Loading…</p>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <AuthScreen
-        initialError={authError}
-        onAuthenticated={(nextUser, token) => {
-          setStoredToken(token);
-          setUser(nextUser);
-          setAuthError(null);
-        }}
-      />
-    );
-  }
-
   if (view === "admin-users") {
-    if (!isSuperUser(user)) {
+    if (!isSuperUser(props.user)) {
       navigate("archive");
       return null;
     }
     return (
       <AdminUsersPage
-        currentUser={user}
+        currentUser={props.user}
         onBack={() => navigate("archive")}
       />
     );
   }
 
   if (view === "admin-teams") {
-    if (!isSuperUser(user)) {
+    if (!isSuperUser(props.user)) {
       navigate("archive");
       return null;
     }
     return (
       <AdminTeamsPage
-        currentUser={user}
+        currentUser={props.user}
         onBack={() => navigate("archive")}
       />
     );
@@ -141,10 +104,61 @@ export function Root() {
 
   return (
     <App
-      user={user}
+      user={props.user}
       onLogout={() => void logout()}
       onOpenUsers={() => navigate("admin-users")}
       onOpenTeams={() => navigate("admin-teams")}
     />
+  );
+}
+
+export function Root() {
+  const [user, setUser] = useState<UserRecord | null>(null);
+  const [booting, setBooting] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const { token, error } = consumeOAuthCallback();
+    if (token) setStoredToken(token);
+    if (error) {
+      console.warn(
+        `[docs-organizer auth] Social login failed (${error}). Email/password sign-in still works.`,
+      );
+      setAuthError(error);
+    }
+
+    const existing = token || getStoredToken();
+    if (!existing) {
+      setBooting(false);
+      return;
+    }
+
+    api
+      .me()
+      .then((data) => setUser(data.user))
+      .catch(() => {
+        setStoredToken(null);
+        setUser(null);
+      })
+      .finally(() => setBooting(false));
+  }, []);
+
+  return (
+    <I18nProvider user={user} onUserUpdated={setUser}>
+      {booting ? (
+        <BootShell />
+      ) : !user ? (
+        <AuthScreen
+          initialError={authError}
+          onAuthenticated={(nextUser, token) => {
+            setStoredToken(token);
+            setUser(nextUser);
+            setAuthError(null);
+          }}
+        />
+      ) : (
+        <AuthenticatedApp user={user} setUser={setUser} />
+      )}
+    </I18nProvider>
   );
 }

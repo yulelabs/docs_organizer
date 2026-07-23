@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  ROLE_LABELS,
   type AdminUserRecord,
   type RoleSlug,
   type UserRecord,
 } from "@docs-organizer/shared";
 import { api } from "./api";
+import { LanguageSwitcher, useI18n } from "./i18n/I18nProvider";
 
 const ALL_ROLES: RoleSlug[] = ["user", "super_user", "team_member"];
 
@@ -13,6 +13,7 @@ export function AdminUsersPage(props: {
   currentUser: UserRecord;
   onBack: () => void;
 }) {
+  const { t } = useI18n();
   const [users, setUsers] = useState<AdminUserRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -39,7 +40,7 @@ export function AdminUsersPage(props: {
 
   useEffect(() => {
     refresh().catch((err) =>
-      setError(err instanceof Error ? err.message : "Failed to load users"),
+      setError(err instanceof Error ? err.message : t("loadUsersFailed")),
     );
   }, []);
 
@@ -76,7 +77,7 @@ export function AdminUsersPage(props: {
       await refresh();
       setSelectedId(created.user.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Create failed");
+      setError(err instanceof Error ? err.message : t("createFailed"));
     } finally {
       setBusy(false);
     }
@@ -99,7 +100,7 @@ export function AdminUsersPage(props: {
       }
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Update failed");
+      setError(err instanceof Error ? err.message : t("updateFailed"));
     } finally {
       setBusy(false);
     }
@@ -109,12 +110,13 @@ export function AdminUsersPage(props: {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
-          <h1>Manage users</h1>
-          <p>Create accounts, assign roles, and reset passwords.</p>
+          <h1>{t("adminUsersTitle")}</h1>
+          <p>{t("adminUsersSubtitle")}</p>
         </div>
         <div className="top-actions">
+          <LanguageSwitcher className="lang-switcher-compact" />
           <button className="btn btn-secondary" type="button" onClick={props.onBack}>
-            Back to archive
+            {t("backToArchive")}
           </button>
         </div>
       </header>
@@ -124,8 +126,8 @@ export function AdminUsersPage(props: {
       <div className="admin-layout">
         <section className="panel admin-panel">
           <div className="admin-section-head">
-            <h2>Users</h2>
-            <span className="meta">{users.length} total</span>
+            <h2>{t("users")}</h2>
+            <span className="meta">{t("totalCount", { count: users.length })}</span>
           </div>
           <ul className="doc-list">
             {users.map((user) => (
@@ -141,7 +143,7 @@ export function AdminUsersPage(props: {
                 <div className="role-chips">
                   {user.roles.map((role) => (
                     <span key={role} className="chip">
-                      {ROLE_LABELS[role]}
+                      {role === "user" ? t("roleUser") : role === "super_user" ? t("roleSuperUser") : t("roleTeamMember")}
                     </span>
                   ))}
                 </div>
@@ -152,19 +154,19 @@ export function AdminUsersPage(props: {
 
         <section className="panel admin-panel">
           <div className="admin-section-head">
-            <h2>Create user</h2>
+            <h2>{t("createUser")}</h2>
           </div>
           <form className="admin-form" onSubmit={(e) => void createUser(e)}>
             <label>
-              Name
+              {t("name")}
               <input
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
-                placeholder="Optional"
+                placeholder={t("nameOptional")}
               />
             </label>
             <label>
-              Email
+              {t("email")}
               <input
                 type="email"
                 required
@@ -173,7 +175,7 @@ export function AdminUsersPage(props: {
               />
             </label>
             <label>
-              Password
+              {t("password")}
               <input
                 type="password"
                 required
@@ -183,7 +185,7 @@ export function AdminUsersPage(props: {
               />
             </label>
             <fieldset className="role-fieldset">
-              <legend>Roles</legend>
+              <legend>{t("roles")}</legend>
               {ALL_ROLES.map((role) => (
                 <label key={role} className="check-row">
                   <input
@@ -194,33 +196,33 @@ export function AdminUsersPage(props: {
                       setCreateRoles((prev) => toggleRole(prev, role))
                     }
                   />
-                  {ROLE_LABELS[role]}
+                  {role === "user" ? t("roleUser") : role === "super_user" ? t("roleSuperUser") : t("roleTeamMember")}
                 </label>
               ))}
             </fieldset>
             <button className="btn" type="submit" disabled={busy}>
-              Create user
+              {t("createUser")}
             </button>
           </form>
         </section>
 
         <section className="panel admin-panel">
           <div className="admin-section-head">
-            <h2>Edit user</h2>
+            <h2>{t("editUser")}</h2>
           </div>
           {!selected ? (
-            <p className="empty">Select a user to edit.</p>
+            <p className="empty">{t("selectUser")}</p>
           ) : (
             <form className="admin-form" onSubmit={(e) => void saveDetails(e)}>
               <label>
-                Name
+                {t("name")}
                 <input
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                 />
               </label>
               <label>
-                Email
+                {t("email")}
                 <input
                   type="email"
                   required
@@ -229,7 +231,7 @@ export function AdminUsersPage(props: {
                 />
               </label>
               <fieldset className="role-fieldset">
-                <legend>Roles</legend>
+                <legend>{t("roles")}</legend>
                 {ALL_ROLES.map((role) => (
                   <label key={role} className="check-row">
                     <input
@@ -245,23 +247,23 @@ export function AdminUsersPage(props: {
                         setEditRoles((prev) => toggleRole(prev, role))
                       }
                     />
-                    {ROLE_LABELS[role]}
+                    {role === "user" ? t("roleUser") : role === "super_user" ? t("roleSuperUser") : t("roleTeamMember")}
                   </label>
                 ))}
               </fieldset>
               <label>
-                Reset password
+                {t("resetPassword")}
                 <input
                   type="password"
                   minLength={8}
                   value={resetPassword}
                   onChange={(e) => setResetPassword(e.target.value)}
-                  placeholder="Leave blank to keep current"
+                  placeholder={t("resetPasswordHint")}
                   autoComplete="new-password"
                 />
               </label>
               <button className="btn" type="submit" disabled={busy}>
-                Save changes
+                {t("saveChanges")}
               </button>
             </form>
           )}
