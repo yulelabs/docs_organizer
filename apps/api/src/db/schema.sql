@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS oauth_states (
 
 CREATE TABLE IF NOT EXISTS documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   original_name TEXT NOT NULL,
   mime_type TEXT NOT NULL,
   size_bytes BIGINT NOT NULL DEFAULT 0,
@@ -56,8 +56,20 @@ CREATE TABLE IF NOT EXISTS documents (
   processed_at TIMESTAMPTZ
 );
 
--- Upgrade path for existing databases
+-- Upgrade path for existing databases (nullable first so old rows can exist)
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+
+-- Remove orphan pre-auth documents that have no owner (cannot be accessed by any user)
+DELETE FROM documents WHERE user_id IS NULL;
+
+-- Enforce ownership going forward (safe after orphan cleanup)
+DO $$
+BEGIN
+  ALTER TABLE documents ALTER COLUMN user_id SET NOT NULL;
+EXCEPTION
+  WHEN others THEN
+    RAISE NOTICE 'Could not set documents.user_id NOT NULL yet: %', SQLERRM;
+END $$;
 
 CREATE TABLE IF NOT EXISTS ocr_jobs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

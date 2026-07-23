@@ -117,6 +117,14 @@ export async function getDocument(
   return result.rows[0] ? mapDocument(result.rows[0]) : null;
 }
 
+/** Strict user-scoped fetch — never returns another user's document. */
+export async function getDocumentForUser(
+  id: string,
+  userId: string,
+): Promise<DocumentRecord | null> {
+  return getDocument(id, userId);
+}
+
 export async function listDocuments(params: {
   userId: string;
   q?: string;
@@ -179,9 +187,10 @@ export async function updateDocument(
     error: string | null;
     processedAt: string | null;
   }>,
+  userId?: string,
 ): Promise<DocumentRecord> {
   const sets: string[] = ["updated_at = NOW()"];
-  const values: unknown[] = [id];
+  const values: unknown[] = [];
 
   const setCol = (column: string, value: unknown, cast?: string) => {
     values.push(value);
@@ -203,8 +212,16 @@ export async function updateDocument(
     setCol("processed_at", patch.processedAt, "timestamptz");
   }
 
+  values.push(id);
+  const idParam = `$${values.length}`;
+  let where = `id = ${idParam}`;
+  if (userId) {
+    values.push(userId);
+    where += ` AND user_id = $${values.length}`;
+  }
+
   const result = await query<DocumentRow>(
-    `UPDATE documents SET ${sets.join(", ")} WHERE id = $1 RETURNING *`,
+    `UPDATE documents SET ${sets.join(", ")} WHERE ${where} RETURNING *`,
     values,
   );
 
@@ -214,7 +231,14 @@ export async function updateDocument(
   return mapDocument(result.rows[0]);
 }
 
-export async function deleteDocument(id: string): Promise<void> {
+export async function deleteDocument(id: string, userId?: string): Promise<void> {
+  if (userId) {
+    await query(`DELETE FROM documents WHERE id = $1 AND user_id = $2`, [
+      id,
+      userId,
+    ]);
+    return;
+  }
   await query(`DELETE FROM documents WHERE id = $1`, [id]);
 }
 

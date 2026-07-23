@@ -62,7 +62,7 @@ export function AuthScreen(props: {
       <section className="auth-panel">
         <div className="auth-brand">
           <h1>Docs Organizer</h1>
-          <p>Sign in to upload invoices and keep your archive private.</p>
+          <p>Sign in to open your private invoice archive. Your documents stay visible only to you.</p>
         </div>
 
         <div className="auth-tabs">

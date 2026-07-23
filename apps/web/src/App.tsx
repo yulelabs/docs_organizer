@@ -256,8 +256,8 @@ export function App(props: {
         <div className="brand">
           <h1>Docs Organizer</h1>
           <p>
-            Drop invoices and receipts. OCR extracts the details and renames
-            them into a clean archive.
+            Your private space — drop invoices and receipts. OCR extracts the
+            details and renames them into a clean archive.
           </p>
         </div>
         <div className="top-actions">
