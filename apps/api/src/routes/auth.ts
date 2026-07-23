@@ -98,16 +98,9 @@ authRouter.post("/login", async (req, res, next) => {
 
     const session = await createSession(existing.id, config.sessionDays);
     setSessionCookie(res, session.token, session.expiresAt);
+    const { passwordHash: _passwordHash, ...user } = existing;
     res.json({
-      user: {
-        id: existing.id,
-        email: existing.email,
-        name: existing.name,
-        avatarUrl: existing.avatarUrl,
-        emailVerified: existing.emailVerified,
-        hasPassword: existing.hasPassword,
-        createdAt: existing.createdAt,
-      },
+      user,
       token: session.token,
       expiresAt: session.expiresAt.toISOString(),
     });

@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import type { UserRecord } from "../db/users.js";
+import { isSuperUser, type UserRecord } from "@docs-organizer/shared";
 import { findUserBySessionToken } from "../db/users.js";
 import { config } from "../config.js";
 
@@ -55,6 +55,22 @@ export function requireAuth(
 ) {
   if (!req.user) {
     res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+  next();
+}
+
+export function requireSuperUser(
+  req: AuthedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  if (!req.user) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+  if (!isSuperUser(req.user)) {
+    res.status(403).json({ error: "Super User role required" });
     return;
   }
   next();

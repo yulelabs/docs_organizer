@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
-import type { UserRecord } from "@docs-organizer/shared";
+import { isSuperUser, type UserRecord } from "@docs-organizer/shared";
 import { api, getStoredToken, setStoredToken } from "./api";
+import { AdminTeamsPage } from "./AdminTeamsPage";
+import { AdminUsersPage } from "./AdminUsersPage";
 import { App } from "./App";
 import { AuthScreen } from "./AuthScreen";
+
+type AppView = "archive" | "admin-users" | "admin-teams";
 
 function consumeOAuthCallback(): { token: string | null; error: string | null } {
   const url = new URL(window.location.href);
@@ -16,10 +20,18 @@ function consumeOAuthCallback(): { token: string | null; error: string | null } 
   return { token, error };
 }
 
+function viewFromHash(): AppView {
+  const hash = window.location.hash.replace(/^#/, "");
+  if (hash === "/admin/users") return "admin-users";
+  if (hash === "/admin/teams") return "admin-teams";
+  return "archive";
+}
+
 export function Root() {
   const [user, setUser] = useState<UserRecord | null>(null);
   const [booting, setBooting] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [view, setView] = useState<AppView>(() => viewFromHash());
 
   useEffect(() => {
     const { token, error } = consumeOAuthCallback();
@@ -47,6 +59,28 @@ export function Root() {
       .finally(() => setBooting(false));
   }, []);
 
+  useEffect(() => {
+    function onHashChange() {
+      setView(viewFromHash());
+    }
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  function navigate(next: AppView) {
+    const hash =
+      next === "admin-users"
+        ? "#/admin/users"
+        : next === "admin-teams"
+          ? "#/admin/teams"
+          : "#/";
+    if (window.location.hash !== hash) {
+      window.location.hash = hash;
+    } else {
+      setView(next);
+    }
+  }
+
   async function logout() {
     try {
       await api.logout();
@@ -55,6 +89,7 @@ export function Root() {
     }
     setStoredToken(null);
     setUser(null);
+    navigate("archive");
   }
 
   if (booting) {
@@ -78,5 +113,38 @@ export function Root() {
     );
   }
 
-  return <App user={user} onLogout={() => void logout()} />;
+  if (view === "admin-users") {
+    if (!isSuperUser(user)) {
+      navigate("archive");
+      return null;
+    }
+    return (
+      <AdminUsersPage
+        currentUser={user}
+        onBack={() => navigate("archive")}
+      />
+    );
+  }
+
+  if (view === "admin-teams") {
+    if (!isSuperUser(user)) {
+      navigate("archive");
+      return null;
+    }
+    return (
+      <AdminTeamsPage
+        currentUser={user}
+        onBack={() => navigate("archive")}
+      />
+    );
+  }
+
+  return (
+    <App
+      user={user}
+      onLogout={() => void logout()}
+      onOpenUsers={() => navigate("admin-users")}
+      onOpenTeams={() => navigate("admin-teams")}
+    />
+  );
 }

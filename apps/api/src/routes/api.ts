@@ -22,6 +22,7 @@ import {
   type AuthedRequest,
 } from "../middleware/auth.js";
 import { authRouter } from "./auth.js";
+import { adminRouter } from "./admin.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -64,6 +65,7 @@ export const apiRouter = Router();
 
 apiRouter.use(attachUser);
 apiRouter.use("/auth", authRouter);
+apiRouter.use("/admin", adminRouter);
 
 apiRouter.get("/health", (_req, res) => {
   res.json({ ok: true, storage: storage.mode() });
