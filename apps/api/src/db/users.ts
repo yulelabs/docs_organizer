@@ -1,17 +1,10 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import bcrypt from "bcryptjs";
 import type { OAuthProvider } from "../config.js";
+import type { RoleSlug, UserRecord } from "@docs-organizer/shared";
 import { query } from "./client.js";
 
-export type UserRecord = {
-  id: string;
-  email: string;
-  name: string | null;
-  avatarUrl: string | null;
-  emailVerified: boolean;
-  hasPassword: boolean;
-  createdAt: string;
-};
+export type { UserRecord };
 
 type UserRow = {
   id: string;
@@ -21,13 +14,14 @@ type UserRow = {
   avatar_url: string | null;
   email_verified: boolean;
   created_at: Date | string;
+  updated_at?: Date | string;
 };
 
 function toIso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
-export function mapUser(row: UserRow): UserRecord {
+export function mapUser(row: UserRow, roles: RoleSlug[] = []): UserRecord {
   return {
     id: row.id,
     email: row.email,
@@ -35,6 +29,7 @@ export function mapUser(row: UserRow): UserRecord {
     avatarUrl: row.avatar_url,
     emailVerified: row.email_verified,
     hasPassword: Boolean(row.password_hash),
+    roles,
     createdAt: toIso(row.created_at),
   };
 }
@@ -58,34 +53,189 @@ export async function verifyPassword(
   return bcrypt.compare(password, passwordHash);
 }
 
-export async function findUserByEmail(email: string): Promise<(UserRecord & { passwordHash: string | null }) | null> {
+export async function getUserRoles(userId: string): Promise<RoleSlug[]> {
+  const result = await query<{ slug: RoleSlug }>(
+    `SELECT r.slug
+     FROM user_roles ur
+     JOIN roles r ON r.id = ur.role_id
+     WHERE ur.user_id = $1
+     ORDER BY r.slug`,
+    [userId],
+  );
+  return result.rows.map((row) => row.slug);
+}
+
+export async function listRoles(): Promise<
+  Array<{ slug: RoleSlug; name: string; description: string | null }>
+> {
+  const result = await query<{
+    slug: RoleSlug;
+    name: string;
+    description: string | null;
+  }>(`SELECT slug, name, description FROM roles ORDER BY slug`);
+  return result.rows;
+}
+
+export async function assignRoles(
+  userId: string,
+  roles: RoleSlug[],
+): Promise<void> {
+  const unique = Array.from(new Set(roles));
+  if (!unique.includes("user")) unique.push("user");
+
+  await query(`DELETE FROM user_roles WHERE user_id = $1`, [userId]);
+  if (unique.length === 0) return;
+
+  await query(
+    `INSERT INTO user_roles (user_id, role_id)
+     SELECT $1, r.id FROM roles r WHERE r.slug = ANY($2::text[])`,
+    [userId, unique],
+  );
+
+  // Team membership requires team_member role
+  if (!unique.includes("team_member")) {
+    await query(`DELETE FROM team_members WHERE user_id = $1`, [userId]);
+  }
+}
+
+export async function ensureDefaultUserRole(userId: string): Promise<void> {
+  await query(
+    `INSERT INTO user_roles (user_id, role_id)
+     SELECT $1, r.id FROM roles r WHERE r.slug = 'user'
+     ON CONFLICT DO NOTHING`,
+    [userId],
+  );
+}
+
+async function withRoles(row: UserRow): Promise<UserRecord> {
+  const roles = await getUserRoles(row.id);
+  return mapUser(row, roles);
+}
+
+export async function findUserByEmail(
+  email: string,
+): Promise<(UserRecord & { passwordHash: string | null }) | null> {
   const result = await query<UserRow>(
     `SELECT * FROM users WHERE lower(email) = lower($1)`,
     [email.trim()],
   );
   if (!result.rows[0]) return null;
   const row = result.rows[0];
-  return { ...mapUser(row), passwordHash: row.password_hash };
+  return { ...(await withRoles(row)), passwordHash: row.password_hash };
 }
 
 export async function findUserById(id: string): Promise<UserRecord | null> {
   const result = await query<UserRow>(`SELECT * FROM users WHERE id = $1`, [id]);
-  return result.rows[0] ? mapUser(result.rows[0]) : null;
+  if (!result.rows[0]) return null;
+  return withRoles(result.rows[0]);
 }
 
 export async function createUserWithPassword(input: {
   email: string;
   password: string;
   name?: string | null;
+  roles?: RoleSlug[];
+  emailVerified?: boolean;
 }): Promise<UserRecord> {
   const passwordHash = await hashPassword(input.password);
   const result = await query<UserRow>(
     `INSERT INTO users (email, password_hash, name, email_verified)
-     VALUES (lower($1), $2, $3, FALSE)
+     VALUES (lower($1), $2, $3, $4)
      RETURNING *`,
-    [input.email.trim(), passwordHash, input.name?.trim() || null],
+    [
+      input.email.trim(),
+      passwordHash,
+      input.name?.trim() || null,
+      input.emailVerified ?? false,
+    ],
   );
-  return mapUser(result.rows[0]);
+  const userId = result.rows[0].id;
+  await assignRoles(userId, input.roles ?? ["user"]);
+  return (await findUserById(userId))!;
+}
+
+export async function updateUserDetails(
+  id: string,
+  patch: {
+    email?: string;
+    name?: string | null;
+    emailVerified?: boolean;
+  },
+): Promise<UserRecord> {
+  const sets: string[] = ["updated_at = NOW()"];
+  const values: unknown[] = [];
+
+  if (patch.email !== undefined) {
+    values.push(patch.email.trim().toLowerCase());
+    sets.push(`email = $${values.length}`);
+  }
+  if (patch.name !== undefined) {
+    values.push(patch.name?.trim() || null);
+    sets.push(`name = $${values.length}`);
+  }
+  if (patch.emailVerified !== undefined) {
+    values.push(patch.emailVerified);
+    sets.push(`email_verified = $${values.length}`);
+  }
+
+  values.push(id);
+  const result = await query<UserRow>(
+    `UPDATE users SET ${sets.join(", ")} WHERE id = $${values.length} RETURNING *`,
+    values,
+  );
+  if (!result.rows[0]) throw new Error("User not found");
+  return withRoles(result.rows[0]);
+}
+
+export async function setUserPassword(
+  id: string,
+  password: string,
+): Promise<void> {
+  const passwordHash = await hashPassword(password);
+  await query(
+    `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`,
+    [id, passwordHash],
+  );
+}
+
+export async function listUsersAdmin(): Promise<
+  Array<
+    UserRecord & {
+      updatedAt: string;
+      teamIds: string[];
+    }
+  >
+> {
+  const users = await query<UserRow>(
+    `SELECT * FROM users ORDER BY created_at DESC`,
+  );
+  const roles = await query<{ user_id: string; slug: RoleSlug }>(
+    `SELECT ur.user_id, r.slug
+     FROM user_roles ur
+     JOIN roles r ON r.id = ur.role_id`,
+  );
+  const teams = await query<{ user_id: string; team_id: string }>(
+    `SELECT user_id, team_id FROM team_members`,
+  );
+
+  const rolesByUser = new Map<string, RoleSlug[]>();
+  for (const row of roles.rows) {
+    const list = rolesByUser.get(row.user_id) ?? [];
+    list.push(row.slug);
+    rolesByUser.set(row.user_id, list);
+  }
+  const teamsByUser = new Map<string, string[]>();
+  for (const row of teams.rows) {
+    const list = teamsByUser.get(row.user_id) ?? [];
+    list.push(row.team_id);
+    teamsByUser.set(row.user_id, list);
+  }
+
+  return users.rows.map((row) => ({
+    ...mapUser(row, rolesByUser.get(row.id) ?? []),
+    updatedAt: toIso(row.updated_at ?? row.created_at),
+    teamIds: teamsByUser.get(row.id) ?? [],
+  }));
 }
 
 export async function findOrCreateOAuthUser(input: {
@@ -123,6 +273,7 @@ export async function findOrCreateOAuthUser(input: {
       ],
     );
     userId = created.rows[0].id;
+    await ensureDefaultUserRole(userId);
   } else {
     userId = existingByEmail.id;
     if (input.avatarUrl || input.name) {
@@ -192,7 +343,7 @@ export async function findUserBySessionToken(
     `UPDATE sessions SET last_seen_at = NOW() WHERE id = $1`,
     [result.rows[0].session_id],
   );
-  return mapUser(result.rows[0]);
+  return withRoles(result.rows[0]);
 }
 
 export async function saveOAuthState(input: {

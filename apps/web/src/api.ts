@@ -1,10 +1,13 @@
 import type {
+  AdminUserRecord,
   AuthProvidersResponse,
   AuthSessionResponse,
   DocumentRecord,
   InvoiceFields,
   OAuthProvider,
   OcrJobRecord,
+  RoleSlug,
+  TeamRecord,
   UserRecord,
 } from "@docs-organizer/shared";
 
@@ -209,5 +212,81 @@ export const api = {
     const token = getStoredToken();
     const base = `${API_BASE}/api/documents/${id}/file`;
     return token ? `${base}?access_token=${encodeURIComponent(token)}` : base;
+  },
+
+  adminListUsers() {
+    return request<{ users: AdminUserRecord[] }>("/api/admin/users");
+  },
+
+  adminCreateUser(input: {
+    email: string;
+    password: string;
+    name?: string;
+    roles?: RoleSlug[];
+  }) {
+    return request<{ user: AdminUserRecord }>("/api/admin/users", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  adminUpdateUser(
+    id: string,
+    input: { email?: string; name?: string | null; emailVerified?: boolean },
+  ) {
+    return request<{ user: AdminUserRecord }>(`/api/admin/users/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+  },
+
+  adminSetRoles(id: string, roles: RoleSlug[]) {
+    return request<{ user: AdminUserRecord }>(`/api/admin/users/${id}/roles`, {
+      method: "PUT",
+      body: JSON.stringify({ roles }),
+    });
+  },
+
+  adminResetPassword(id: string, password: string) {
+    return request<void>(`/api/admin/users/${id}/password`, {
+      method: "POST",
+      body: JSON.stringify({ password, revokeSessions: true }),
+    });
+  },
+
+  adminListTeams() {
+    return request<{ teams: TeamRecord[] }>("/api/admin/teams");
+  },
+
+  adminCreateTeam(input: {
+    name: string;
+    description?: string | null;
+    memberIds?: string[];
+  }) {
+    return request<{ team: TeamRecord }>("/api/admin/teams", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  adminUpdateTeam(
+    id: string,
+    input: { name?: string; description?: string | null },
+  ) {
+    return request<{ team: TeamRecord }>(`/api/admin/teams/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+  },
+
+  adminSetTeamMembers(id: string, memberIds: string[]) {
+    return request<{ team: TeamRecord }>(`/api/admin/teams/${id}/members`, {
+      method: "PUT",
+      body: JSON.stringify({ memberIds }),
+    });
+  },
+
+  adminDeleteTeam(id: string) {
+    return request<void>(`/api/admin/teams/${id}`, { method: "DELETE" });
   },
 };

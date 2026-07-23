@@ -5,6 +5,7 @@ import type {
   OcrJobRecord,
   UserRecord,
 } from "@docs-organizer/shared";
+import { isSuperUser } from "@docs-organizer/shared";
 import { api } from "./api";
 
 type UploadNotice = { id: string; name: string; state: string };
@@ -29,6 +30,8 @@ function statusLabel(status: string) {
 export function App(props: {
   user: UserRecord;
   onLogout: () => void;
+  onOpenUsers?: () => void;
+  onOpenTeams?: () => void;
 }) {
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -264,6 +267,24 @@ export function App(props: {
           <span className="user-chip" title={props.user.email}>
             {props.user.name || props.user.email}
           </span>
+          {isSuperUser(props.user) ? (
+            <>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={props.onOpenUsers}
+              >
+                Manage users
+              </button>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={props.onOpenTeams}
+              >
+                Manage teams
+              </button>
+            </>
+          ) : null}
           <button
             className="btn btn-secondary"
             type="button"

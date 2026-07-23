@@ -7,6 +7,14 @@ export type DocumentStatus =
 
 export type JobStatus = "pending" | "active" | "completed" | "failed";
 
+export type RoleSlug = "user" | "super_user" | "team_member";
+
+export interface RoleRecord {
+  slug: RoleSlug;
+  name: string;
+  description: string | null;
+}
+
 export interface InvoiceFields {
   vendor: string | null;
   invoiceNumber: string | null;
@@ -46,7 +54,22 @@ export interface UserRecord {
   avatarUrl: string | null;
   emailVerified: boolean;
   hasPassword: boolean;
+  roles: RoleSlug[];
   createdAt: string;
+}
+
+export interface AdminUserRecord extends UserRecord {
+  updatedAt: string;
+  teamIds: string[];
+}
+
+export interface TeamRecord {
+  id: string;
+  name: string;
+  description: string | null;
+  memberIds: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type OAuthProvider = "google" | "facebook" | "github";
@@ -87,6 +110,20 @@ export interface CreateUploadResponse {
 export interface CreateOcrJobResponse {
   job: OcrJobRecord;
   document: DocumentRecord;
+}
+
+export const ROLE_LABELS: Record<RoleSlug, string> = {
+  user: "User",
+  super_user: "Super User",
+  team_member: "Team Member",
+};
+
+export function hasRole(user: Pick<UserRecord, "roles">, role: RoleSlug): boolean {
+  return user.roles.includes(role);
+}
+
+export function isSuperUser(user: Pick<UserRecord, "roles">): boolean {
+  return hasRole(user, "super_user");
 }
 
 export const emptyInvoiceFields = (): InvoiceFields => ({

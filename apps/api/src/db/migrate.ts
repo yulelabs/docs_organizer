@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config.js";
 import { pool } from "./client.js";
+import { seedRolesAndSuperAdmin } from "./seed.js";
 
 async function migrate() {
   const schemaPath = path.join(
@@ -12,6 +13,7 @@ async function migrate() {
   const sql = await fs.readFile(schemaPath, "utf8");
   await pool.query(sql);
   console.log("Database schema applied.");
+  await seedRolesAndSuperAdmin();
   console.log(`Connected to: ${config.databaseUrl.replace(/:[^:@/]+@/, ":***@")}`);
 }
 

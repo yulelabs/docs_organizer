@@ -622,3 +622,110 @@ a {
     max-width: 100%;
   }
 }
+
+.admin-layout {
+  display: grid;
+  grid-template-columns: 1.1fr 0.95fr 0.95fr;
+  gap: 1.25rem;
+}
+
+@media (max-width: 1100px) {
+  .admin-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-panel {
+  padding-bottom: 1rem;
+}
+
+.admin-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1.1rem 1.2rem 0.35rem;
+}
+
+.admin-section-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+}
+
+.admin-form {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0.5rem 1.2rem 1.2rem;
+}
+
+.admin-form label,
+.admin-form legend {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.admin-form input,
+.admin-form textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.75);
+  border-radius: 12px;
+  padding: 0.7rem 0.85rem;
+  color: var(--ink);
+  outline: none;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 500;
+  font-size: 1rem;
+}
+
+.admin-form input:focus,
+.admin-form textarea:focus {
+  border-color: rgba(15, 107, 92, 0.45);
+  box-shadow: 0 0 0 3px rgba(15, 107, 92, 0.12);
+}
+
+.role-fieldset {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.75rem 0.9rem;
+  margin: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.check-row {
+  display: flex !important;
+  align-items: center;
+  gap: 0.55rem;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 0.95rem !important;
+  font-weight: 500 !important;
+  color: var(--ink) !important;
+}
+
+.check-row input {
+  width: auto;
+}
+
+.role-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: flex-end;
+  align-self: start;
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
